@@ -16,7 +16,6 @@ import {
   RotateCw,
   Swords,
   ShieldCheck,
-  Building2,
   FileText
 } from 'lucide-react';
 
@@ -126,7 +125,6 @@ export default function App() {
   const [activeCoords, setActiveCoords] = useState<[number, number] | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
-  // Strategic Lens & Drawer State
   const [persona, setPersona] = useState<PersonaMode>('neutral');
   const [activePlaybookTab, setActivePlaybookTab] = useState<'details' | 'attack' | 'defend'>('details');
 
@@ -148,7 +146,6 @@ export default function App() {
     fetchIncidents();
   }, []);
 
-  // Persona change avvagane drawer tab default-ga set avthundi
   useEffect(() => {
     if (persona === 'tvk_ruling') {
       setActivePlaybookTab('defend');
@@ -491,17 +488,17 @@ export default function App() {
                       <span>Opposition Attack Strategy (DMK / AIADMK)</span>
                     </div>
                     <p className="text-gray-300 leading-relaxed">
-                      <strong>Ground Vulnerability:</strong> {selectedIncident.district} prantham lo idhi administrative oversight kindhaki vasthundi.
+                      <strong>Ground Vulnerability:</strong> {selectedIncident.district} பகுதியில் நிர்வாகக் குறைபாடு காரணமாக பொது அமைதி/சேவை பாதிப்பு ஏற்பட்டுள்ளது.
                     </p>
                     <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
                       <span className="text-amber-400 font-bold block text-[10px] uppercase">Ready-to-Post Campaign Question:</span>
                       <p className="italic">
-                        "{selectedIncident.district}-lo intha jaruguthunna official administrative machinery em chesthondi? Public safety mariyu grievance redressal ekkada?"
+                        "{selectedIncident.district}-ல் மக்கள் சந்திக்கும் இந்த அநீதிக்கு மாவட்ட நிர்வாகமும் ஆளும் தரப்பும் என்ன பதில் சொல்லப் போகிறது? உடனடியாக நடவடிக்கை எங்கே?"
                       </p>
                     </div>
                     <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>Local MLA office daggara representation memo file cheyyandi.</li>
-                      <li>District level press briefing lo direct questions raise cheyyandi.</li>
+                      <li>உள்ளூர் சட்டமன்ற அலுவலகத்தில் உடனடி மனு சமர்ப்பிக்கவும்.</li>
+                      <li>மாவட்ட பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை முன்வைத்து கேள்வி எழுப்பவும்.</li>
                     </ul>
                   </div>
                 )}
@@ -513,17 +510,17 @@ export default function App() {
                       <span>Governance Counter & Defense (TVK War-Room)</span>
                     </div>
                     <p className="text-gray-300 leading-relaxed">
-                      <strong>Damage Control Action:</strong> Sambandhitha departmental district authorities ventane on-ground inquiry report register cheyyali.
+                      <strong>Damage Control Action:</strong> துறைசார்ந்த அதிகாரிகள் உடனடியாக தலையிட்டு உண்மை நிலவரத்தை மக்களுக்கு தெளிவுபடுத்த வேண்டும்.
                     </p>
                     <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
                       <span className="text-emerald-400 font-bold block text-[10px] uppercase">Rebuttal Fact-Check Draft:</span>
                       <p className="italic">
-                        "Sanghatana meedha departmental action already take up ayyindi. Opposition pracharam chesthunna misleading narratives ni public believe cheyodhu."
+                        "இந்த விவகாரத்தில் அரசு உரிய துறை மூலம் உடனடி நடவடிக்கை மேற்கொண்டுள்ளது. எதிர்க்கட்சிகள் பரப்பும் வதந்திகளைப் புறந்தள்ளி உண்மை நிலையை அறிவோம்."
                       </p>
                     </div>
                     <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>24-hour rapid response status report release cheyyandi.</li>
-                      <li>Department official statement tho social media counter push cheyyandi.</li>
+                      <li>24 மணி நேர துரித நடவடிக்கை அறிக்கையை மாவட்ட அளவில் வெளியிடவும்.</li>
+                      <li>துறைசார்ந்த செய்திக்குறிப்புடன் சமூக வலைதள அவதூறுகளுக்கு விளக்கம் தரவும்.</li>
                     </ul>
                   </div>
                 )}
