@@ -1,0 +1,28 @@
+name: FonsOS Daily Ingestion Worker
+
+on:
+  schedule:
+    # Runs at 00:00 UTC and 12:00 UTC (Every 12 hours)
+    - cron: '0 0,12 * * *'
+  workflow_dispatch: # Manual button trigger support
+
+jobs:
+  sync-news:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install feedparser requests supabase python-dateutil
+
+      - name: Execute Daily Sync
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python daily_sync.py
