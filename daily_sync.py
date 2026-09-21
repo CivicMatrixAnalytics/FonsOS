@@ -6,12 +6,10 @@ from dateutil import parser as date_parser
 import feedparser
 from supabase import create_client, Client
 
-# Environment variables (GitHub Actions & Local fallback)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://yqystwfszetkbhwggzrv.supabase.co")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Tamil Nadu All 38 Districts Coordinates & Keywords Mapping
 TN_DISTRICTS = {
     "Ariyalur": {"lat": 11.1401, "lng": 79.0786, "keys": ["அரியலூர்", "ariyalur", "ஜெயங்கொண்டம்"]},
     "Chengalpattu": {"lat": 12.6939, "lng": 79.9757, "keys": ["செங்கல்பட்டு", "chengalpattu", "தாம்பரம்", "பல்லாவரம்", "மறைமலைநகர்"]},
@@ -54,9 +52,9 @@ TN_DISTRICTS = {
 }
 
 CATEGORY_MAP = {
-    "Corruption": ["ஊழல்", "கைது", "லஞ்சம்", "dvac", "முறைகேடு", "raid", "முறைகேடுகள்", "வங்கி மோசடி", "வருமான வரி"],
-    "Law & Order": ["கொலை", "தாக்குதல்", "போராட்டம்", "கலவரம்", "arrest", "துப்பாக்கி", "வழிப்பறி", "மறியல்", "வெட்டு", "போலீஸ்"],
-    "Infrastructure": ["குடிநீர்", "சாலை", "மின்தடை", "சாக்கடை", "பாலம்", "வெள்ளம்", "விபத்து", "பேருந்து", "ரயில்"],
+    "Corruption": ["ஊழல்", "கைது", "லஞ்சம்", "dvac", "முறைகேடு", "raid", "முறைகேடுகள்", "மோசடி", "வருமான வரி"],
+    "Law & Order": ["கொலை", "தாக்குதல்", "போராட்டம்", "கலவரம்", "arrest", "துப்பாக்கி", "வழிப்பறி", "மறியல்", "வெட்டு", "போலீஸ்", "விபத்து"],
+    "Infrastructure": ["குடிநீர்", "சாலை", "மின்தடை", "சாக்கடை", "பாலம்", "வெள்ளம்", "பேருந்து", "ரயில்", "மருத்துவமனை"],
     "Governance": ["அரசாணை", "திட்டம்", "விமர்சனம்", "அறிக்கை", "கோரிக்கை", "பட்ஜெட்", "தேர்தல்", "ஆளுநர்", "முதல்வர்", "அமைச்சர்"]
 }
 
@@ -76,8 +74,7 @@ def detect_category(text):
                 return cat
     return "Governance"
 
-def parse_and_sync_feed(feed_url, default_source, start_date):
-    """Safely parse single RSS feed without breaking execution"""
+def process_feed(feed_url, default_source):
     records = []
     try:
         feed = feedparser.parse(feed_url)
@@ -90,8 +87,6 @@ def parse_and_sync_feed(feed_url, default_source, start_date):
             pub_raw = getattr(item, "published", getattr(item, "updated", ""))
             try:
                 pub_dt = date_parser.parse(pub_raw).date()
-                if pub_dt < start_date:
-                    continue
                 inc_date = pub_dt.strftime("%Y-%m-%d")
             except Exception:
                 inc_date = datetime.date.today().strftime("%Y-%m-%d")
@@ -108,71 +103,41 @@ def parse_and_sync_feed(feed_url, default_source, start_date):
                 "longitude": lng,
                 "category": cat,
                 "severity": "High" if cat in ["Corruption", "Law & Order"] else "Medium",
-                "source_outlet": source,
+                "source_outlet": source if source else default_source,
                 "proof_url": link,
                 "incident_date": inc_date,
                 "status": "approved"
             })
     except Exception as e:
-        print(f"[!] Warning reading {default_source}: {e}")
+        print(f"[!] Error parsing {default_source}: {e}")
     return records
 
-def run_daily_sync():
-    start_date = datetime.date.today() - datetime.timedelta(days=2)
-    print(f"[*] FonsOS Regional Ingestion Started: [{start_date} to {datetime.date.today()}]")
-    total_synced = 0
+def run_sync():
+    print(f"[*] Ingestion run at: {datetime.datetime.now()}")
+    total_added = 0
 
-    # 1. Direct Regional News RSS Feeds
-    regional_direct_feeds = [
+    sources = [
         ("https://www.dinamalar.com/rss_crime.asp", "Dinamalar Crime"),
-        ("https://www.dinamani.com/%E0%AE%A4%E0%AE%AE%E0%AE%BF%E0%AE%B4%E0%AE%95%E0%AE%AE%E0%AF%8D/%E0%AE%AE%E0%AE%BE%E0%AE%B5%E0%AE%9F%E0%AF%8D%E0%AE%9F%E0%AE%99%E0%AF%8D%E0%AE%95%E0%AE%B3%E0%AF%8D/rssfeed/?id=486&getXmlFeed=true", "Dinamani Districts"),
         ("https://feeds.feedburner.com/PuthiyathalaimuraiTamilNews", "Puthiyathalaimurai"),
-        ("https://www.dailythanthi.com/rss", "Daily Thanthi"),
-        ("https://www.vikatan.com/api/v1/collections/tamilnadu-news.rss", "Vikatan"),
-        ("https://tamil.oneindia.com/rss/tamil-news-fb.xml", "OneIndia Tamil")
+        ("https://tamil.oneindia.com/rss/tamil-news-fb.xml", "OneIndia Tamil"),
+        ("https://news.google.com/rss/search?q=%E0%AE%A4%E0%AE%AE%E0%AE%BF%E0%AE%B4%E0%AF%8D%E0%AE%A8%E0%AE%BE%E0%AE%9F%E0%AF%81+%E0%AE%95%E0%AF%88%E0%AE%A4%E0%AF%81+%E0%AE%95%E0%AF%8A%E0%AE%B2%E0%AF%88&hl=ta&gl=IN&ceid=IN:ta", "Google News Crime"),
+        ("https://news.google.com/rss/search?q=%E0%AE%A4%E0%AE%AE%E0%AE%BF%E0%AE%B4%E0%AF%8D%E0%AE%A8%E0%AE%BE%E0%AE%9F%E0%AF%81+%E0%AE%8A%E0%AE%B4%E0%AE%B2%E0%AF%8D+DVAC&hl=ta&gl=IN&ceid=IN:ta", "Google News DVAC"),
+        ("https://news.google.com/rss/search?q=%E0%AE%A4%E0%AE%AE%E0%AE%BF%E0%AE%B4%E0%AE%95+%E0%AE%AE%E0%AE%BE%E0%AE%B5%E0%AE%9F%E0%AF%8D%E0%AE%9F%E0%AE%99%E0%AF%8D%E0%AE%95%E0%AE%B3%E0%AF%8D+%E0%AE%9A%E0%AF%86%E0%AE%AF%E0%AF%8D%E0%AE%A4%E0%AE%BF%E0%AE%95%E0%AE%B3%E0%AF%8D&hl=ta&gl=IN&ceid=IN:ta", "Google News Districts")
     ]
 
-    for feed_url, source_name in regional_direct_feeds:
-        batch = parse_and_sync_feed(feed_url, source_name, start_date)
-        if batch:
+    for url, src_name in sources:
+        items = process_feed(url, src_name)
+        if items:
             try:
-                supabase.table("incidents").upsert(batch, on_conflict="proof_url").execute()
-                total_synced += len(batch)
-                print(f"[✓] Direct Feed Synced {len(batch)} records from: {source_name}")
+                res = supabase.table("incidents").upsert(items, on_conflict="proof_url").execute()
+                count = len(items)
+                total_added += count
+                print(f"[✓] Synced {count} records from {src_name}")
             except Exception as e:
-                print(f"[!] Upsert error ({source_name}): {e}")
+                print(f"[!] Upsert error {src_name}: {e}")
         time.sleep(0.5)
 
-    # 2. Hyper-Local & Micro-Level Google News Topics
-    search_queries = [
-        "தமிழ்நாடு ஊழல்",
-        "தமிழ்நாடு லஞ்சம் DVAC",
-        "தமிழ்நாடு கைது கொலை",
-        "சட்டம் ஒழுங்கு தமிழ்நாடு",
-        "அரசு மருத்துவமனை போராட்டம்",
-        "சாலை மறியல் தமிழ்நாடு",
-        "விருதுநகர் அருப்புக்கோட்டை செய்திகள்",
-        "மதுரை குற்றச் செய்தி",
-        "கோவை மாவட்டச் செய்தி",
-        "சென்னை காவல்துறை வழக்கு"
-    ]
-
-    for q in search_queries:
-        query_str = f"{q} after:{start_date.strftime('%Y-%m-%d')}"
-        encoded = urllib.parse.quote(query_str)
-        rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=ta&gl=IN&ceid=IN:ta"
-
-        batch = parse_and_sync_feed(rss_url, "Google Tamil News", start_date)
-        if batch:
-            try:
-                supabase.table("incidents").upsert(batch, on_conflict="proof_url").execute()
-                total_synced += len(batch)
-                print(f"[✓] Micro Search Synced {len(batch)} records for: '{q}'")
-            except Exception as e:
-                print(f"[!] Upsert error ({q}): {e}")
-        time.sleep(0.5)
-
-    print(f"[★] Multi-Source Ingestion Finished. Total Processed: {total_synced} records.")
+    print(f"[★] Completed. Total processed: {total_added}")
 
 if __name__ == "__main__":
-    run_daily_sync()
+    run_sync()

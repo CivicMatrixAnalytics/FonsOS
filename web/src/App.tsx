@@ -12,7 +12,8 @@ import {
   Flame, 
   AlertOctagon, 
   X,
-  Radio
+  Radio,
+  RotateCw
 } from 'lucide-react';
 
 interface Incident {
@@ -66,25 +67,28 @@ function FlyToLocation({ coords }: { coords: [number, number] | null }) {
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeCoords, setActiveCoords] = useState<[number, number] | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
-  useEffect(() => {
-    async function fetchIncidents() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('incidents')
-        .select('*')
-        .order('incident_date', { ascending: false });
+  const fetchIncidents = async () => {
+    setIsRefreshing(true);
+    const { data, error } = await supabase
+      .from('incidents')
+      .select('*')
+      .order('incident_date', { ascending: false });
 
-      if (!error && data) {
-        setIncidents(data);
-      }
-      setLoading(false);
+    if (!error && data) {
+      setIncidents(data);
     }
+    setLoading(false);
+    setIsRefreshing(false);
+  };
+
+  useEffect(() => {
     fetchIncidents();
   }, []);
 
@@ -132,6 +136,16 @@ export default function App() {
 
         {/* Top KPI Metrics Bar */}
         <div className="hidden lg:flex items-center gap-3 text-xs">
+          <button
+            onClick={fetchIncidents}
+            disabled={isRefreshing}
+            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-medium cursor-pointer disabled:opacity-50"
+            title="Fetch Latest from Supabase"
+          >
+            <RotateCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
+          </button>
+
           <div className="bg-gray-800/80 px-3 py-1.5 rounded-lg border border-gray-700/80 flex items-center gap-2">
             <Activity size={14} className="text-blue-400" />
             <span>Total: <strong className="text-white">{stats.total}</strong></span>
@@ -173,7 +187,7 @@ export default function App() {
                 onChange={(e) => setSelectedDistrict(e.target.value)}
               >
                 {districts.map((d) => (
-                  <option key={d} value={d}>{d === 'All' ? '📌 All Districts' : d}</option>
+                  <option key={d} value={d}>{d === 'All' ? 'All Districts' : d}</option>
                 ))}
               </select>
 
@@ -183,7 +197,7 @@ export default function App() {
                 onChange={(e) => setSelectedCategory(e.target.value)}
               >
                 {categories.map((c) => (
-                  <option key={c} value={c}>{c === 'All' ? '⚡ All Categories' : c}</option>
+                  <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>
                 ))}
               </select>
             </div>
@@ -282,7 +296,7 @@ export default function App() {
                       {incident.title}
                     </h4>
                     <div className="text-[11px] text-gray-600 mb-2">
-                      📍 {incident.district} • 🗓 {incident.incident_date}
+                      📍 {incident.district} • 📅 {incident.incident_date}
                     </div>
                     <a
                       href={incident.proof_url}
