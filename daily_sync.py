@@ -4,7 +4,7 @@ import json
 import feedparser
 from datetime import datetime
 from supabase import create_client, Client
-import google.generativeai as genai
+from google import genai
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -15,9 +15,8 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-# Gemini API Configuration
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Initialize GenAI Client
+ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 RSS_FEEDS = [
     {"outlet": "The Hindu TN", "url": "https://www.thehindu.com/news/national/tamil-nadu/feeder/default.rss"},
@@ -92,11 +91,7 @@ def categorize_incident(text):
     return "Governance"
 
 def analyze_strategic_intelligence(title, summary):
-    """
-    Analyzes whether news is genuinely actionable or routine weather/general news
-    under 2026 Tamil Nadu context (TVK ruling, DMK/AIADMK opposition).
-    """
-    if not GEMINI_API_KEY:
+    if not ai_client:
         return {
             "is_actionable": False,
             "strategic_tag": "Routine Ground Feed",
@@ -113,7 +108,7 @@ Summary: {summary}
 Rule 1: Generic routine natural events like simple rainfall, seasonal weather, festival, routine accidents are NOT actionable (is_actionable = false).
 Rule 2: If the event reflects administrative failure, delayed disaster relief, waterlogging negligence, corruption, power crisis, police inaction, or public protest against administration, it IS actionable (is_actionable = true).
 
-Return ONLY valid JSON matching this structure:
+Return ONLY valid JSON:
 {{
   "is_actionable": true or false,
   "strategic_tag": "Short 2-4 word tag (e.g. Relief Mismanagement, Bribery Sting, Civic Gridlock, Routine Weather)",
@@ -122,13 +117,12 @@ Return ONLY valid JSON matching this structure:
 }}
 """
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        response = model.generate_content(
-            prompt,
-            generation_config={"response_mime_type": "application/json"}
+        response = ai_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={"response_mime_type": "application/json"}
         )
-        data = json.loads(response.text.strip())
-        return data
+        return json.loads(response.text.strip())
     except Exception as e:
         print(f"Gemini analysis fallback: {e}")
         return {
@@ -152,7 +146,6 @@ def process_feed(feed_info):
         coords = TN_DISTRICT_COORDS.get(district, TN_DISTRICT_COORDS["Tamil Nadu (General)"])
         category = categorize_incident(combined_text)
 
-        # AI Strategic Context Analysis
         ai_data = analyze_strategic_intelligence(title, summary)
 
         incident_payload = {
@@ -172,7 +165,6 @@ def process_feed(feed_info):
             "defense_angle": ai_data.get("defense_angle")
         }
 
-        # Check for duplicates by title
         existing = supabase.from_("incidents").select("id").eq("title", title).execute()
         if not existing.data:
             supabase.from_("incidents").insert(incident_payload).execute()
