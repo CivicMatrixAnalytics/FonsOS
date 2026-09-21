@@ -10,7 +10,6 @@ import 'leaflet/dist/leaflet.css';
 import { 
   ShieldAlert, 
   RefreshCw, 
-  Filter, 
   Search, 
   ExternalLink, 
   Sparkles, 
@@ -20,8 +19,7 @@ import {
   X, 
   Crosshair, 
   Flame, 
-  ShieldCheck, 
-  AlertTriangle 
+  ShieldCheck 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -43,7 +41,7 @@ interface Incident {
   defense_angle?: string;
 }
 
-// Helper component to pan/zoom map dynamically
+// Fly-to controller for smooth Leaflet camera movement
 function MapFlyToController({ selectedCoord }: { selectedCoord: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
@@ -60,7 +58,7 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
 
-  // War-room lens state: TVK (Ruling) vs Opposition (DMK/AIADMK)
+  // War-room lens state
   const [warRoomLens, setWarRoomLens] = useState<'DMK' | 'TVK' | 'AIADMK'>('DMK');
 
   // Filter states
@@ -69,7 +67,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
 
-  // Copy state
+  // Copy states
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
 
@@ -94,7 +92,7 @@ export default function App() {
     fetchIncidents();
   }, []);
 
-  // Filtered dataset
+  // Synchronized Filter Logic (District, Category, Actionable, Search)
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
@@ -110,19 +108,16 @@ export default function App() {
     });
   }, [incidents, selectedDistrict, selectedCategory, actionableOnly, searchQuery]);
 
-  // Unique list of districts from current dataset
   const districtList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
     return ['All', ...list.sort()];
   }, [incidents]);
 
-  // Unique list of categories
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
     return ['All', ...list.sort()];
   }, [incidents]);
 
-  // Active fly-to coordinate
   const selectedCoord = useMemo<[number, number] | null>(() => {
     if (selectedIncident && selectedIncident.latitude && selectedIncident.longitude) {
       return [selectedIncident.latitude, selectedIncident.longitude];
@@ -130,33 +125,32 @@ export default function App() {
     return null;
   }, [selectedIncident]);
 
-  // Copy draft to clipboard
   const handleCopyText = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedDraft(true);
     setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  // Export full actionable dossier
+  // Feature 4: Full Dossier Export Engine
   const handleExportDossier = () => {
     const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
     const textLines = [
       `=============================================================`,
-      `FONS-OS INTELLIGENCE WAR-ROOM DOSSIER: ${warRoomLens} LENS`,
+      `FONS-OS STRATEGIC INTELLIGENCE DOSSIER (${warRoomLens} LENS)`,
       `Generated: ${new Date().toLocaleString('en-IN')}`,
-      `Total Incidents: ${actionableItems.length}`,
+      `Total Actionable Incidents: ${actionableItems.length}`,
       `=============================================================\n`,
     ];
 
     actionableItems.forEach((item, idx) => {
       textLines.push(`[${idx + 1}] ${item.title}`);
-      textLines.push(`District: ${item.district} | Category: ${item.category} | Tag: ${item.strategic_tag || 'N/A'}`);
+      textLines.push(`District: ${item.district} | Category: ${item.category} | Classification: ${item.strategic_tag || 'Ground Feed'}`);
       if (warRoomLens === 'TVK') {
-        textLines.push(`Defense Angle: ${item.defense_angle || 'Monitoring field response'}`);
+        textLines.push(`TVK Defense/Rebuttal: ${item.defense_angle || 'Monitoring field administrative action'}`);
       } else {
-        textLines.push(`Opposition Charge: ${item.attack_angle || 'Demand public accountability'}`);
+        textLines.push(`Opposition Charge: ${item.attack_angle || 'Public accountability demanded'}`);
       }
-      textLines.push(`Source: ${item.source_outlet} | Proof: ${item.proof_url}`);
+      textLines.push(`Source Outlet: ${item.source_outlet} | Proof: ${item.proof_url}`);
       textLines.push(`-------------------------------------------------------------\n`);
     });
 
@@ -184,7 +178,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* War-room Lens selector & actions */}
+        {/* Action Controls & Dual Lens Selector */}
         <div className="flex items-center gap-3">
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
             <span className="text-slate-400 mr-2">War-Room Lens:</span>
@@ -201,7 +195,7 @@ export default function App() {
 
           <button
             onClick={handleExportDossier}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all cursor-pointer"
             title="Export Actionable Dossier to Clipboard"
           >
             {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <FileDown size={14} />}
@@ -211,7 +205,7 @@ export default function App() {
           <button
             onClick={fetchIncidents}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 transition-all cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             <span>Refresh</span>
@@ -219,7 +213,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Dynamic Lens Banner */}
+      {/* War-Room Tactical Banner */}
       <div
         className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
           warRoomLens === 'TVK'
@@ -240,13 +234,12 @@ export default function App() {
         </span>
       </div>
 
-      {/* Main Container */}
+      {/* Main Content Workspace */}
       <div className="flex flex-1 relative overflow-hidden">
-        {/* Left Sidebar: Feed & Filters */}
+        {/* Left Side: Filterable Feed */}
         <div className="w-[430px] flex flex-col border-r border-slate-800 bg-slate-900/60 backdrop-blur z-10">
-          {/* Filter Bar */}
+          {/* Interactive Filters */}
           <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900/90">
-            {/* Search */}
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input
@@ -258,7 +251,6 @@ export default function App() {
               />
             </div>
 
-            {/* Dropdowns */}
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={selectedDistrict}
@@ -281,7 +273,6 @@ export default function App() {
               </select>
             </div>
 
-            {/* Actionable Only Switch */}
             <div className="flex items-center justify-between pt-1">
               <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -292,13 +283,13 @@ export default function App() {
                 />
                 Show Actionable Issues Only
               </label>
-              <span className="text-[10px] text-slate-500">
+              <span className="text-[10px] text-slate-500 font-mono">
                 {filteredIncidents.filter((i) => i.is_actionable).length} Actionable
               </span>
             </div>
           </div>
 
-          {/* Incident Feed List */}
+          {/* Cards List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1.5">
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
@@ -323,14 +314,12 @@ export default function App() {
                         {incident.category}
                       </span>
 
-                      {/* Strategic Tag Badge */}
                       {incident.strategic_tag && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
                           {incident.strategic_tag}
                         </span>
                       )}
 
-                      {/* Actionable Badge */}
                       {isActionable && (
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
@@ -352,9 +341,7 @@ export default function App() {
                   </h3>
 
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/40 text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1">
-                      📍 {incident.district}
-                    </span>
+                    <span className="flex items-center gap-1">📍 {incident.district}</span>
                     <span className="text-slate-500 text-[10px]">{incident.source_outlet}</span>
                   </div>
                 </div>
@@ -411,7 +398,7 @@ export default function App() {
                     },
                   }}
                 >
-                  <Popup className="custom-popup">
+                  <Popup>
                     <div className="p-1 text-xs max-w-xs text-slate-900 font-sans">
                       <div className="font-bold mb-1">{incident.title}</div>
                       <div className="text-[10px] text-slate-600 mb-1">
@@ -419,7 +406,7 @@ export default function App() {
                       </div>
                       {incident.strategic_tag && (
                         <div className="text-[10px] font-semibold text-indigo-600">
-                          Tag: {incident.strategic_tag}
+                          Classification: {incident.strategic_tag}
                         </div>
                       )}
                     </div>
@@ -430,10 +417,9 @@ export default function App() {
           </MapContainer>
         </div>
 
-        {/* Right Strategic Intelligence Drawer */}
+        {/* Right Drawer: Intelligence Playbook */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
-            {/* Drawer Header */}
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -459,11 +445,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* Navigation Tabs */}
             <div className="flex border-b border-slate-800 bg-slate-950/40 text-xs font-semibold">
               <button
                 onClick={() => setActiveTab('details')}
-                className={`flex-1 py-2.5 text-center border-b-2 transition-all ${
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all cursor-pointer ${
                   activeTab === 'details'
                     ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -473,7 +458,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab('attack')}
-                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   activeTab === 'attack'
                     ? 'border-rose-500 text-rose-400 bg-rose-500/10'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -484,7 +469,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => setActiveTab('defense')}
-                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                   activeTab === 'defense'
                     ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
                     : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -495,9 +480,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Drawer Body Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
-              {/* Tab 1: Details */}
               {activeTab === 'details' && (
                 <div className="space-y-4">
                   <div>
@@ -529,7 +512,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Tab 2: Attack Angle (Opposition Lens) */}
               {activeTab === 'attack' && (
                 <div className="space-y-4">
                   <div className="p-3 bg-rose-950/30 border border-rose-800/40 rounded-lg">
@@ -542,7 +524,6 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Ready to post draft */}
                   <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-amber-400 uppercase">
@@ -554,7 +535,7 @@ export default function App() {
                             `[FonsOS Alert - ${selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
                           )
                         }
-                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded"
+                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
                       >
                         {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
                         <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
@@ -573,7 +554,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Tab 3: Defense Rebuttal (TVK Ruling Lens) */}
               {activeTab === 'defense' && (
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
@@ -586,7 +566,6 @@ export default function App() {
                     </p>
                   </div>
 
-                  {/* Rebuttal Fact-Check Draft */}
                   <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-emerald-400 uppercase">
@@ -598,7 +577,7 @@ export default function App() {
                             `[TVK Governance Update - ${selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
                           )
                         }
-                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded"
+                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
                       >
                         {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
                         <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
@@ -618,7 +597,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Drawer Footer: External Proof */}
             <div className="p-3 border-t border-slate-800 bg-slate-950/60">
               <a
                 href={selectedIncident.proof_url}
