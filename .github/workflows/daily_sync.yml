@@ -11,18 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4[cite: 12]
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v5[cite: 12]
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'[cite: 12]
+          python-version: '3.11'
 
       - name: Install Dependencies
-        run: pip install feedparser requests supabase python-dateutil[cite: 12]
+        run: pip install feedparser requests supabase python-dateutil
 
       - name: Execute Daily Sync
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}[cite: 12]
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}[cite: 12]
-        run: python daily_sync.py[cite: 12]
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python daily_sync.py
