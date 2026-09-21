@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   MapContainer, 
   TileLayer, 
@@ -435,7 +435,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setSelectedIncident(null)}
-                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200"
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer"
               >
                 <X size={16} />
               </button>
