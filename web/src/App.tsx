@@ -33,8 +33,11 @@ interface Incident {
 const createMarkerIcon = (category: string) => {
   let color = '#ef4444'; 
   if (category === 'Corruption') color = '#f59e0b';
-  if (category === 'Infrastructure') color = '#3b82f6';
-  if (category === 'Governance') color = '#10b981';
+  else if (category === 'Infrastructure') color = '#3b82f6';
+  else if (category === 'Governance') color = '#10b981';
+  else if (category === 'Welfare & Schemes') color = '#8b5cf6';
+  else if (category === 'Health & Environment') color = '#06b6d4';
+  else if (category === 'Education & Jobs') color = '#ec4899';
 
   return L.divIcon({
     className: 'custom-fons-pin',
@@ -63,6 +66,49 @@ function FlyToLocation({ coords }: { coords: [number, number] | null }) {
   }, [coords, map]);
   return null;
 }
+
+const ALL_TN_DISTRICTS = [
+  'All',
+  'Ariyalur',
+  'Chengalpattu',
+  'Chennai',
+  'Coimbatore',
+  'Cuddalore',
+  'Dharmapuri',
+  'Dindigul',
+  'Erode',
+  'Kallakurichi',
+  'Kancheepuram',
+  'Kanyakumari',
+  'Karur',
+  'Krishnagiri',
+  'Madurai',
+  'Mayiladuthurai',
+  'Nagapattinam',
+  'Namakkal',
+  'Nilgiris',
+  'Perambalur',
+  'Pudukkottai',
+  'Ramanathapuram',
+  'Ranipet',
+  'Salem',
+  'Sivaganga',
+  'Tamil Nadu (General)',
+  'Tenkasi',
+  'Thanjavur',
+  'Theni',
+  'Thoothukudi',
+  'Tiruchirappalli',
+  'Tirunelveli',
+  'Tirupathur',
+  'Tiruppur',
+  'Tiruvallur',
+  'Tiruvannamalai',
+  'Tiruvarur',
+  'Vellore',
+  'Viluppuram',
+  'Virudhunagar'
+];
 
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -112,8 +158,17 @@ export default function App() {
     });
   }, [incidents, selectedDistrict, selectedCategory, searchQuery]);
 
-  const districts = ['All', ...Array.from(new Set(incidents.map((i) => i.district))).sort()];
-  const categories = ['All', 'Corruption', 'Law & Order', 'Infrastructure', 'Governance'];
+  const districts = ALL_TN_DISTRICTS;
+  const categories = [
+    'All', 
+    'Corruption', 
+    'Law & Order', 
+    'Infrastructure', 
+    'Governance', 
+    'Welfare & Schemes', 
+    'Health & Environment', 
+    'Education & Jobs'
+  ];
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0b0f19] text-gray-100 overflow-hidden font-sans">
@@ -187,7 +242,7 @@ export default function App() {
                 onChange={(e) => setSelectedDistrict(e.target.value)}
               >
                 {districts.map((d) => (
-                  <option key={d} value={d}>{d === 'All' ? 'All Districts' : d}</option>
+                  <option key={d} value={d}>{d === 'All' ? '📍 All Districts' : d}</option>
                 ))}
               </select>
 
@@ -197,7 +252,7 @@ export default function App() {
                 onChange={(e) => setSelectedCategory(e.target.value)}
               >
                 {categories.map((c) => (
-                  <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>
+                  <option key={c} value={c}>{c === 'All' ? '⚡ All Categories' : c}</option>
                 ))}
               </select>
             </div>
@@ -232,6 +287,9 @@ export default function App() {
                       item.category === 'Corruption' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
                       item.category === 'Law & Order' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
                       item.category === 'Infrastructure' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+                      item.category === 'Welfare & Schemes' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' :
+                      item.category === 'Health & Environment' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' :
+                      item.category === 'Education & Jobs' ? 'bg-pink-500/15 text-pink-400 border border-pink-500/30' :
                       'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                     }`}>
                       {item.category}
