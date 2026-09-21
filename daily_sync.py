@@ -1,10 +1,12 @@
 import os
 import re
 import json
+import time
 import feedparser
 from datetime import datetime
 from supabase import create_client, Client
 from google import genai
+from google.genai import types
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -14,8 +16,6 @@ if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise ValueError("Missing Supabase environment variables.")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-# Initialize GenAI Client
 ai_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 RSS_FEEDS = [
@@ -90,7 +90,7 @@ def categorize_incident(text):
         return "Education & Jobs"
     return "Governance"
 
-def analyze_strategic_intelligence(title, summary):
+def analyze_strategic_intelligence(title, summary, category):
     if not ai_client:
         return {
             "is_actionable": False,
@@ -100,53 +100,75 @@ def analyze_strategic_intelligence(title, summary):
         }
 
     prompt = f"""
-You are a political strategic intelligence analyst for Tamil Nadu (2026 setup: TVK is ruling party, DMK and AIADMK are main opposition).
+You are a political strategic intelligence analyst for Tamil Nadu (2026 scenario: TVK is ruling party, DMK and AIADMK are opposition).
 Analyze this incident:
 Headline: {title}
 Summary: {summary}
+Category: {category}
 
-Rule 1: Generic routine natural events like simple rainfall, seasonal weather, festival, routine accidents are NOT actionable (is_actionable = false).
-Rule 2: If the event reflects administrative failure, delayed disaster relief, waterlogging negligence, corruption, power crisis, police inaction, or public protest against administration, it IS actionable (is_actionable = true).
+Rule 1: Generic routine natural events (simple rainfall, weather warning, sports, routine accidents, coaching inaugurations) are NOT actionable (is_actionable = false).
+Rule 2: If the event reflects administrative failure, delayed disaster relief, hospital drug shortage, corruption, power crisis, police inaction, or public protest against administration, it IS actionable (is_actionable = true).
+Rule 3: If actionable, provide a targeted Tamil attack angle for opposition and a constructive defense rebuttal for ruling TVK.
 
 Return ONLY valid JSON:
 {{
   "is_actionable": true or false,
-  "strategic_tag": "Short 2-4 word tag (e.g. Relief Mismanagement, Bribery Sting, Civic Gridlock, Routine Weather)",
-  "attack_angle": "1-2 lines on how opposition (DMK/AIADMK) can hold administration accountable, or null if false",
-  "defense_angle": "1-2 lines on how ruling party (TVK) can address or counter this grievance, or null if false"
+  "strategic_tag": "Short 2-4 word tag (e.g. Relief Delay, Medicine Shortage, Civic Gridlock, Routine Weather)",
+  "attack_angle": "Direct sharp charge in Tamil on administrative lapse or null",
+  "defense_angle": "Constructive counter/rebuttal response in Tamil or null"
 }}
 """
-    try:
-        response = ai_client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text.strip())
-    except Exception as e:
-        print(f"Gemini analysis fallback: {e}")
-        return {
-            "is_actionable": False,
-            "strategic_tag": "Field Alert",
-            "attack_angle": None,
-            "defense_angle": None
-        }
+    models_to_try = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+    for model_name in models_to_try:
+        for attempt in range(2):
+            try:
+                response = ai_client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
+                )
+                return json.loads(response.text.strip())
+            except Exception as e:
+                err_str = str(e)
+                if "503" in err_str or "UNAVAILABLE" in err_str:
+                    time.sleep(3)
+                    continue
+                else:
+                    break
+
+    return {
+        "is_actionable": False,
+        "strategic_tag": "Field Alert",
+        "attack_angle": None,
+        "defense_angle": None
+    }
 
 def process_feed(feed_info):
     feed = feedparser.parse(feed_info["url"])
     print(f"Ingesting from: {feed_info['outlet']} (Found {len(feed.entries)} entries)")
 
-    for entry in feed.entries[:15]:
-        title = entry.get("title", "")
-        link = entry.get("link", "")
-        summary = entry.get("summary", title)
+    for entry in feed.entries[:12]:
+        title = entry.get("title", "").strip()
+        link = entry.get("link", "").strip()
+        summary = entry.get("summary", title).strip()
         combined_text = f"{title} {summary}"
+
+        if not title:
+            continue
+
+        # Duplicate check before making AI API call (saves quota & time)
+        existing = supabase.from_("incidents").select("id").eq("title", title).execute()
+        if existing.data:
+            continue
 
         district = detect_district(combined_text)
         coords = TN_DISTRICT_COORDS.get(district, TN_DISTRICT_COORDS["Tamil Nadu (General)"])
         category = categorize_incident(combined_text)
 
-        ai_data = analyze_strategic_intelligence(title, summary)
+        # AI Strategic Context Analysis
+        ai_data = analyze_strategic_intelligence(title, summary, category)
 
         incident_payload = {
             "title": title,
@@ -165,10 +187,11 @@ def process_feed(feed_info):
             "defense_angle": ai_data.get("defense_angle")
         }
 
-        existing = supabase.from_("incidents").select("id").eq("title", title).execute()
-        if not existing.data:
-            supabase.from_("incidents").insert(incident_payload).execute()
-            print(f"-> Inserted: [{category}] {title[:40]}... (Actionable: {ai_data.get('is_actionable')})")
+        supabase.from_("incidents").insert(incident_payload).execute()
+        print(f"-> Inserted: [{category}] {title[:40]}... (Actionable: {ai_data.get('is_actionable')})")
+
+        # Rate-limiting pause between AI calls
+        time.sleep(3)
 
 def main():
     print("Starting Automated TN Intelligence Sync with Strategic AI Enrichment...")
