@@ -1,26 +1,29 @@
-import { useEffect, useState, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { supabase } from './supabaseClient';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  MapContainer, 
+  TileLayer, 
+  CircleMarker, 
+  Popup, 
+  useMap 
+} from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import { 
   ShieldAlert, 
-  MapPin, 
+  RefreshCw, 
+  Filter, 
   Search, 
-  Activity, 
-  Calendar, 
   ExternalLink, 
+  Sparkles, 
+  Share2, 
+  FileDown, 
+  Check, 
+  X, 
+  Crosshair, 
   Flame, 
-  AlertOctagon, 
-  X,
-  Radio,
-  RotateCw,
-  Swords,
-  ShieldCheck,
-  FileText,
-  Target,
-  LifeBuoy,
-  Sparkles
+  ShieldCheck, 
+  AlertTriangle 
 } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 interface Incident {
   id: string;
@@ -30,627 +33,605 @@ interface Incident {
   latitude: number;
   longitude: number;
   category: string;
-  severity: string;
+  severity: 'High' | 'Medium' | 'Low';
   source_outlet: string;
   proof_url: string;
   incident_date: string;
   is_actionable?: boolean;
-  strategic_tag?: string | null;
-  attack_angle?: string | null;
-  defense_angle?: string | null;
+  strategic_tag?: string;
+  attack_angle?: string;
+  defense_angle?: string;
 }
 
-type PersonaMode = 'neutral' | 'tvk_ruling' | 'dmk_opposition' | 'aiadmk_opposition';
-
-const createMarkerIcon = (category: string, persona: PersonaMode) => {
-  let color = '#ef4444'; 
-  if (category === 'Corruption') color = '#f59e0b';
-  else if (category === 'Infrastructure') color = '#3b82f6';
-  else if (category === 'Governance') color = '#10b981';
-  else if (category === 'Welfare & Schemes') color = '#8b5cf6';
-  else if (category === 'Health & Environment') color = '#06b6d4';
-  else if (category === 'Education & Jobs') color = '#ec4899';
-
-  let borderColor = '#ffffff';
-  let glow = color;
-  if (persona === 'tvk_ruling') {
-    borderColor = '#facc15';
-    glow = '#eab308';
-  } else if (persona === 'dmk_opposition') {
-    borderColor = '#ef4444';
-    glow = '#dc2626';
-  } else if (persona === 'aiadmk_opposition') {
-    borderColor = '#22c55e';
-    glow = '#16a34a';
-  }
-
-  return L.divIcon({
-    className: 'custom-fons-pin',
-    html: `
-      <div style="
-        background-color: ${color};
-        width: 14px;
-        height: 14px;
-        border-radius: 50%;
-        border: 2px solid ${borderColor};
-        box-shadow: 0 0 14px ${glow};
-        cursor: pointer;
-      "></div>
-    `,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-  });
-};
-
-function FlyToLocation({ coords }: { coords: [number, number] | null }) {
+// Helper component to pan/zoom map dynamically
+function MapFlyToController({ selectedCoord }: { selectedCoord: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
-    if (coords) {
-      map.flyTo(coords, 11, { duration: 1.2 });
+    if (selectedCoord) {
+      map.flyTo(selectedCoord, 12, { duration: 1.2 });
     }
-  }, [coords, map]);
+  }, [selectedCoord, map]);
   return null;
 }
 
-const ALL_TN_DISTRICTS = [
-  'All',
-  'Ariyalur',
-  'Chengalpattu',
-  'Chennai',
-  'Coimbatore',
-  'Cuddalore',
-  'Dharmapuri',
-  'Dindigul',
-  'Erode',
-  'Kallakurichi',
-  'Kancheepuram',
-  'Kanyakumari',
-  'Karur',
-  'Krishnagiri',
-  'Madurai',
-  'Mayiladuthurai',
-  'Nagapattinam',
-  'Namakkal',
-  'Nilgiris',
-  'Perambalur',
-  'Pudukkottai',
-  'Ramanathapuram',
-  'Ranipet',
-  'Salem',
-  'Sivaganga',
-  'Tamil Nadu (General)',
-  'Tenkasi',
-  'Thanjavur',
-  'Theni',
-  'Thoothukudi',
-  'Tiruchirappalli',
-  'Tirunelveli',
-  'Tirupathur',
-  'Tiruppur',
-  'Tiruvallur',
-  'Tiruvannamalai',
-  'Tiruvarur',
-  'Vellore',
-  'Viluppuram',
-  'Virudhunagar'
-];
-
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
+
+  // War-room lens state: TVK (Ruling) vs Opposition (DMK/AIADMK)
+  const [warRoomLens, setWarRoomLens] = useState<'DMK' | 'TVK' | 'AIADMK'>('DMK');
+
+  // Filter states
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeCoords, setActiveCoords] = useState<[number, number] | null>(null);
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [actionableOnly, setActionableOnly] = useState<boolean>(false);
 
-  const [persona, setPersona] = useState<PersonaMode>('neutral');
-  const [activePlaybookTab, setActivePlaybookTab] = useState<'details' | 'attack' | 'defend'>('details');
+  // Copy state
+  const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
+  const [dossierCopied, setDossierCopied] = useState<boolean>(false);
 
   const fetchIncidents = async () => {
-    setIsRefreshing(true);
-    const { data, error } = await supabase
-      .from('incidents')
-      .select('*')
-      .order('incident_date', { ascending: false });
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('incidents')
+        .select('*')
+        .order('incident_date', { ascending: false });
 
-    if (!error && data) {
-      setIncidents(data);
+      if (error) throw error;
+      setIncidents(data || []);
+    } catch (err) {
+      console.error('Error fetching incidents:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    setIsRefreshing(false);
   };
 
   useEffect(() => {
     fetchIncidents();
   }, []);
 
-  useEffect(() => {
-    if (persona === 'tvk_ruling') {
-      setActivePlaybookTab('defend');
-    } else if (persona === 'dmk_opposition' || persona === 'aiadmk_opposition') {
-      setActivePlaybookTab('attack');
-    } else {
-      setActivePlaybookTab('details');
-    }
-  }, [persona]);
+  // Filtered dataset
+  const filteredIncidents = useMemo(() => {
+    return incidents.filter((inc) => {
+      const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
+      const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
+      const matchActionable = !actionableOnly || inc.is_actionable;
+      const matchSearch =
+        searchQuery === '' ||
+        inc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        inc.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (inc.strategic_tag && inc.strategic_tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const stats = useMemo(() => {
-    return {
-      total: incidents.length,
-      corruption: incidents.filter(i => i.category === 'Corruption').length,
-      lawOrder: incidents.filter(i => i.category === 'Law & Order').length,
-      districtsCount: new Set(incidents.map(i => i.district)).size
-    };
+      return matchDistrict && matchCategory && matchActionable && matchSearch;
+    });
+  }, [incidents, selectedDistrict, selectedCategory, actionableOnly, searchQuery]);
+
+  // Unique list of districts from current dataset
+  const districtList = useMemo(() => {
+    const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
+    return ['All', ...list.sort()];
   }, [incidents]);
 
-  const filteredIncidents = useMemo(() => {
-    return incidents.filter((item) => {
-      const matchDistrict = selectedDistrict === 'All' || item.district === selectedDistrict;
-      const matchCat = selectedCategory === 'All' || item.category === selectedCategory;
-      const matchSearch =
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.district.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchDistrict && matchCat && matchSearch;
-    });
-  }, [incidents, selectedDistrict, selectedCategory, searchQuery]);
+  // Unique list of categories
+  const categoryList = useMemo(() => {
+    const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
+    return ['All', ...list.sort()];
+  }, [incidents]);
 
-  const districts = ALL_TN_DISTRICTS;
-  const categories = [
-    'All', 
-    'Corruption', 
-    'Law & Order', 
-    'Infrastructure', 
-    'Governance', 
-    'Welfare & Schemes', 
-    'Health & Environment', 
-    'Education & Jobs'
-  ];
-
-  const getLensBanner = () => {
-    if (persona === 'tvk_ruling') {
-      return {
-        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
-        label: 'TVK RULING LENS ACTIVE',
-        desc: 'Focus: Rapid Response, Damage Control & Countering Opposition Allegations',
-        icon: <LifeBuoy size={14} className="text-amber-400" />
-      };
-    }
-    if (persona === 'dmk_opposition') {
-      return {
-        bg: 'bg-red-500/10 border-red-500/30 text-red-300',
-        label: 'DMK OPPOSITION LENS ACTIVE',
-        desc: 'Focus: Anti-Incumbency Flashpoints, Charge Dossiers & Protest Agenda',
-        icon: <Target size={14} className="text-red-400" />
-      };
-    }
-    if (persona === 'aiadmk_opposition') {
-      return {
-        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
-        label: 'AIADMK OPPOSITION LENS ACTIVE',
-        desc: 'Focus: Grassroots Scrutiny, Regional Lapses & Accountability Drive',
-        icon: <Swords size={14} className="text-emerald-400" />
-      };
+  // Active fly-to coordinate
+  const selectedCoord = useMemo<[number, number] | null>(() => {
+    if (selectedIncident && selectedIncident.latitude && selectedIncident.longitude) {
+      return [selectedIncident.latitude, selectedIncident.longitude];
     }
     return null;
+  }, [selectedIncident]);
+
+  // Copy draft to clipboard
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedDraft(true);
+    setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  const lensBanner = getLensBanner();
+  // Export full actionable dossier
+  const handleExportDossier = () => {
+    const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
+    const textLines = [
+      `=============================================================`,
+      `FONS-OS INTELLIGENCE WAR-ROOM DOSSIER: ${warRoomLens} LENS`,
+      `Generated: ${new Date().toLocaleString('en-IN')}`,
+      `Total Incidents: ${actionableItems.length}`,
+      `=============================================================\n`,
+    ];
+
+    actionableItems.forEach((item, idx) => {
+      textLines.push(`[${idx + 1}] ${item.title}`);
+      textLines.push(`District: ${item.district} | Category: ${item.category} | Tag: ${item.strategic_tag || 'N/A'}`);
+      if (warRoomLens === 'TVK') {
+        textLines.push(`Defense Angle: ${item.defense_angle || 'Monitoring field response'}`);
+      } else {
+        textLines.push(`Opposition Charge: ${item.attack_angle || 'Demand public accountability'}`);
+      }
+      textLines.push(`Source: ${item.source_outlet} | Proof: ${item.proof_url}`);
+      textLines.push(`-------------------------------------------------------------\n`);
+    });
+
+    navigator.clipboard.writeText(textLines.join('\n'));
+    setDossierCopied(true);
+    setTimeout(() => setDossierCopied(false), 2500);
+  };
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#0b0f19] text-gray-100 overflow-hidden font-sans">
+    <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Top Header */}
-      <header className="h-16 border-b border-gray-800 bg-[#0f172a] px-5 flex items-center justify-between z-10 shrink-0">
+      <header className="h-16 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between z-20 backdrop-blur">
         <div className="flex items-center gap-3">
-          <div className="bg-amber-500/10 border border-amber-500/30 p-2 rounded-lg text-amber-400">
+          <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400">
             <ShieldAlert size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-bold text-lg tracking-wide text-white">FonsOS</h1>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
-                <Radio size={10} className="animate-pulse" /> LIVE TN INTELLIGENCE
+              <h1 className="font-bold text-lg tracking-tight text-white">FonsOS</h1>
+              <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                LIVE TN INTELLIGENCE
               </span>
             </div>
-            <p className="text-xs text-gray-400">Automated Public Governance, Grievance & Incident Dossier</p>
+            <p className="text-xs text-slate-400">Automated Public Governance, Grievance & Incident Dossier</p>
           </div>
         </div>
 
-        {/* Strategic Persona Switcher & Controls */}
-        <div className="flex items-center gap-3 text-xs">
-          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
-            persona === 'tvk_ruling' ? 'bg-amber-500/15 border-amber-500/50 shadow-md shadow-amber-500/10' :
-            persona === 'dmk_opposition' ? 'bg-red-500/15 border-red-500/50 shadow-md shadow-red-500/10' :
-            persona === 'aiadmk_opposition' ? 'bg-emerald-500/15 border-emerald-500/50 shadow-md shadow-emerald-500/10' :
-            'bg-[#1e293b] border-gray-700'
-          }`}>
-            <span className="text-gray-300 text-[11px] font-semibold hidden sm:inline">War-Room Lens:</span>
+        {/* War-room Lens selector & actions */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+            <span className="text-slate-400 mr-2">War-Room Lens:</span>
             <select
-              value={persona}
-              onChange={(e) => setPersona(e.target.value as PersonaMode)}
-              className="bg-transparent font-bold focus:outline-none cursor-pointer text-xs text-white"
+              value={warRoomLens}
+              onChange={(e) => setWarRoomLens(e.target.value as 'DMK' | 'TVK' | 'AIADMK')}
+              className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer"
             >
-              <option value="neutral" className="bg-[#0f172a] text-gray-200">Neutral (CMA Master)</option>
-              <option value="tvk_ruling" className="bg-[#0f172a] text-yellow-400">TVK (Ruling - Defend/Delivery)</option>
-              <option value="dmk_opposition" className="bg-[#0f172a] text-red-400">DMK (Opposition - Attack/Expose)</option>
-              <option value="aiadmk_opposition" className="bg-[#0f172a] text-green-400">AIADMK (Opposition Front)</option>
+              <option value="DMK" className="bg-slate-900 text-slate-100">DMK (Opposition - Attack/Expose)</option>
+              <option value="AIADMK" className="bg-slate-900 text-slate-100">AIADMK (Opposition - Attack/Expose)</option>
+              <option value="TVK" className="bg-slate-900 text-slate-100">TVK (Ruling - Defend/Delivery)</option>
             </select>
           </div>
 
           <button
-            onClick={fetchIncidents}
-            disabled={isRefreshing}
-            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-medium cursor-pointer disabled:opacity-50"
-            title="Fetch Latest from Supabase"
+            onClick={handleExportDossier}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all"
+            title="Export Actionable Dossier to Clipboard"
           >
-            <RotateCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-            <span className="hidden md:inline">{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
+            {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <FileDown size={14} />}
+            <span>{dossierCopied ? 'Dossier Copied!' : 'Export Dossier'}</span>
           </button>
 
-          <div className="hidden xl:flex items-center gap-2 bg-gray-800/80 px-3 py-1.5 rounded-lg border border-gray-700/80">
-            <Activity size={14} className="text-blue-400" />
-            <span>Total: <strong className="text-white">{stats.total}</strong></span>
-          </div>
-          <div className="hidden xl:flex items-center gap-2 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-400">
-            <Flame size={14} />
-            <span>Corruption: <strong>{stats.corruption}</strong></span>
-          </div>
-          <div className="hidden xl:flex items-center gap-2 bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400">
-            <AlertOctagon size={14} />
-            <span>Law & Order: <strong>{stats.lawOrder}</strong></span>
-          </div>
+          <button
+            onClick={fetchIncidents}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 transition-all"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span>Refresh</span>
+          </button>
         </div>
       </header>
 
-      {/* Strategic Lens Active Status Bar */}
-      {lensBanner && (
-        <div className={`px-5 py-1.5 border-b text-xs flex items-center justify-between shrink-0 transition-all ${lensBanner.bg}`}>
-          <div className="flex items-center gap-2">
-            {lensBanner.icon}
-            <span className="font-bold tracking-wider text-[11px]">{lensBanner.label}</span>
-            <span className="hidden md:inline text-gray-300 text-[11px]">| {lensBanner.desc}</span>
-          </div>
-          <div className="text-[10px] font-medium opacity-80 uppercase tracking-wider">
-            Active War-Room Perspective
-          </div>
+      {/* Dynamic Lens Banner */}
+      <div
+        className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
+          warRoomLens === 'TVK'
+            ? 'bg-amber-950/40 border-amber-800/50 text-amber-300'
+            : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          {warRoomLens === 'TVK' ? <ShieldCheck size={15} /> : <Flame size={15} />}
+          <span>
+            {warRoomLens === 'TVK'
+              ? 'TVK RULING LENS ACTIVE | Focus: Rapid Response, Damage Control & Countering Opposition Allegations'
+              : `${warRoomLens} OPPOSITION LENS ACTIVE | Focus: Anti-Incumbency Flashpoints, Charge Dossiers & Protest Agenda`}
+          </span>
         </div>
-      )}
+        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
+          {filteredIncidents.length} Records Loaded
+        </span>
+      </div>
 
-      {/* Main Workspace */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Side: Filter & Feed */}
-        <aside className="w-[42%] flex flex-col border-r border-gray-800 bg-[#0d1322] shrink-0">
-          <div className="p-4 border-b border-gray-800 flex flex-col gap-3 bg-[#111827]/70">
+      {/* Main Container */}
+      <div className="flex flex-1 relative overflow-hidden">
+        {/* Left Sidebar: Feed & Filters */}
+        <div className="w-[430px] flex flex-col border-r border-slate-800 bg-slate-900/60 backdrop-blur z-10">
+          {/* Filter Bar */}
+          <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900/90">
+            {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+              <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input
                 type="text"
                 placeholder="Search district, keywords, charges..."
-                className="w-full bg-[#1e293b] border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-100 placeholder-gray-400 focus:outline-none focus:border-amber-400 transition"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-slate-950/80 border border-slate-700 rounded-md text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
               />
             </div>
 
-            <div className="flex gap-2">
+            {/* Dropdowns */}
+            <div className="grid grid-cols-2 gap-2">
               <select
-                className="flex-1 bg-[#1e293b] border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-amber-400 cursor-pointer"
                 value={selectedDistrict}
                 onChange={(e) => setSelectedDistrict(e.target.value)}
+                className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
-                {districts.map((d) => (
-                  <option key={d} value={d}>{d === 'All' ? '📍 All Districts' : d}</option>
+                {districtList.map((d) => (
+                  <option key={d} value={d} className="bg-slate-900">{d === 'All' ? 'All Districts' : d}</option>
                 ))}
               </select>
 
               <select
-                className="flex-1 bg-[#1e293b] border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-amber-400 cursor-pointer"
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
-                {categories.map((c) => (
-                  <option key={c} value={c}>{c === 'All' ? '⚡ All Categories' : c}</option>
+                {categoryList.map((c) => (
+                  <option key={c} value={c} className="bg-slate-900">{c === 'All' ? 'All Categories' : c}</option>
                 ))}
               </select>
             </div>
+
+            {/* Actionable Only Switch */}
+            <div className="flex items-center justify-between pt-1">
+              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={actionableOnly}
+                  onChange={(e) => setActionableOnly(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer"
+                />
+                Show Actionable Issues Only
+              </label>
+              <span className="text-[10px] text-slate-500">
+                {filteredIncidents.filter((i) => i.is_actionable).length} Actionable
+              </span>
+            </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {loading ? (
-              <div className="text-center py-24 text-gray-400 text-sm flex flex-col items-center gap-2">
-                <Activity size={24} className="animate-spin text-amber-400" />
-                Updating Intelligence Feed...
-              </div>
-            ) : filteredIncidents.length === 0 ? (
-              <div className="text-center py-24 text-gray-400 text-sm">
-                No incidents match this criterion.
-              </div>
-            ) : (
-              filteredIncidents.map((item) => (
+          {/* Incident Feed List */}
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1.5">
+            {filteredIncidents.map((incident) => {
+              const isSelected = selectedIncident?.id === incident.id;
+              const isActionable = incident.is_actionable;
+
+              return (
                 <div
-                  key={item.id}
+                  key={incident.id}
                   onClick={() => {
-                    setActiveCoords([item.latitude, item.longitude]);
-                    setSelectedIncident(item);
+                    setSelectedIncident(incident);
+                    setActiveTab(isActionable ? (warRoomLens === 'TVK' ? 'defense' : 'attack') : 'details');
                   }}
-                  className={`p-3.5 rounded-lg border transition cursor-pointer relative ${
-                    selectedIncident?.id === item.id
-                      ? 'border-amber-400 bg-[#1e293b] shadow-lg shadow-amber-500/10'
-                      : 'border-gray-800/90 bg-[#111827] hover:border-gray-700 hover:bg-[#141d2e]'
+                  className={`p-3 rounded-lg cursor-pointer transition-all border ${
+                    isSelected
+                      ? 'bg-slate-800/90 border-amber-500/70 shadow-lg'
+                      : 'bg-slate-950/40 border-slate-800/80 hover:bg-slate-800/50 hover:border-slate-700'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase ${
-                        item.category === 'Corruption' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
-                        item.category === 'Law & Order' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
-                        item.category === 'Infrastructure' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
-                        item.category === 'Welfare & Schemes' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' :
-                        item.category === 'Health & Environment' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' :
-                        item.category === 'Education & Jobs' ? 'bg-pink-500/15 text-pink-400 border border-pink-500/30' :
-                        'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                      }`}>
-                        {item.category}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                        {incident.category}
                       </span>
 
-                      {/* AI Context-Aware Action Badges */}
-                      {item.is_actionable ? (
-                        <>
-                          {persona === 'tvk_ruling' && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40 uppercase flex items-center gap-1 shadow-sm">
-                              <Sparkles size={10} /> Rebuttal Target
-                            </span>
-                          )}
-                          {(persona === 'dmk_opposition' || persona === 'aiadmk_opposition') && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 uppercase flex items-center gap-1 shadow-sm">
-                              <Sparkles size={10} /> Charge Point
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        item.strategic_tag && (
-                          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
-                            {item.strategic_tag}
-                          </span>
-                        )
+                      {/* Strategic Tag Badge */}
+                      {incident.strategic_tag && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
+                          {incident.strategic_tag}
+                        </span>
+                      )}
+
+                      {/* Actionable Badge */}
+                      {isActionable && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
+                            warRoomLens === 'TVK'
+                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                          }`}
+                        >
+                          <Sparkles size={10} />
+                          {warRoomLens === 'TVK' ? 'REBUTTAL TARGET' : 'CHARGE POINT'}
+                        </span>
                       )}
                     </div>
-
-                    <span className="text-[11px] text-gray-400 flex items-center gap-1">
-                      <Calendar size={12} /> {item.incident_date}
-                    </span>
+                    <span className="text-[10px] text-slate-500 whitespace-nowrap">{incident.incident_date}</span>
                   </div>
 
-                  <h3 className="text-xs font-semibold text-gray-100 leading-snug line-clamp-2 mb-2">
-                    {item.title}
+                  <h3 className="text-xs font-semibold text-slate-100 mt-2 line-clamp-2 leading-relaxed">
+                    {incident.title}
                   </h3>
 
-                  <div className="flex items-center justify-between text-[11px] text-gray-400 pt-2 border-t border-gray-800/80">
-                    <span className="flex items-center gap-1 text-gray-300 font-medium">
-                      <MapPin size={12} className="text-amber-400" /> {item.district}
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/40 text-[11px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      📍 {incident.district}
                     </span>
-                    <span className="text-indigo-400 flex items-center gap-1">
-                      {item.source_outlet}
-                    </span>
+                    <span className="text-slate-500 text-[10px]">{incident.source_outlet}</span>
                   </div>
                 </div>
-              ))
+              );
+            })}
+
+            {filteredIncidents.length === 0 && (
+              <div className="p-8 text-center text-xs text-slate-500">
+                No incidents match your selected filters.
+              </div>
             )}
           </div>
-        </aside>
+        </div>
 
-        {/* Right Side: Map Container */}
-        <main className="flex-1 h-full relative">
+        {/* Center: Leaflet Interactive Map */}
+        <div className="flex-1 h-full relative z-0">
           <MapContainer
             center={[11.1271, 78.6569]}
             zoom={7}
-            scrollWheelZoom={true}
-            className="w-full h-full"
-            style={{ background: '#0b0f19' }}
+            className="h-full w-full"
+            style={{ background: '#020617' }}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            <FlyToLocation coords={activeCoords} />
+            <MapFlyToController selectedCoord={selectedCoord} />
 
-            {filteredIncidents.map((incident) => (
-              <Marker
-                key={incident.id}
-                position={[incident.latitude, incident.longitude]}
-                icon={createMarkerIcon(incident.category, persona)}
-                eventHandlers={{
-                  click: () => {
-                    setSelectedIncident(incident);
-                    setActiveCoords([incident.latitude, incident.longitude]);
-                  },
-                }}
-              >
-                <Popup>
-                  <div className="p-1 max-w-xs text-xs font-sans text-gray-900">
-                    <div className="font-bold uppercase tracking-wider text-[10px] text-amber-600 mb-1">
-                      {incident.category}
+            {filteredIncidents.map((incident) => {
+              const isSelected = selectedIncident?.id === incident.id;
+              const isActionable = incident.is_actionable;
+              const color = isActionable
+                ? warRoomLens === 'TVK'
+                  ? '#f59e0b'
+                  : '#ef4444'
+                : '#10b981';
+
+              return (
+                <CircleMarker
+                  key={incident.id}
+                  center={[incident.latitude, incident.longitude]}
+                  radius={isSelected ? 10 : isActionable ? 8 : 5}
+                  pathOptions={{
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: isSelected ? 0.9 : 0.6,
+                    weight: isSelected ? 3 : 1.5,
+                  }}
+                  eventHandlers={{
+                    click: () => {
+                      setSelectedIncident(incident);
+                      setActiveTab(isActionable ? (warRoomLens === 'TVK' ? 'defense' : 'attack') : 'details');
+                    },
+                  }}
+                >
+                  <Popup className="custom-popup">
+                    <div className="p-1 text-xs max-w-xs text-slate-900 font-sans">
+                      <div className="font-bold mb-1">{incident.title}</div>
+                      <div className="text-[10px] text-slate-600 mb-1">
+                        {incident.district} | {incident.category}
+                      </div>
+                      {incident.strategic_tag && (
+                        <div className="text-[10px] font-semibold text-indigo-600">
+                          Tag: {incident.strategic_tag}
+                        </div>
+                      )}
                     </div>
-                    <h4 className="font-semibold text-gray-900 leading-snug mb-1">
-                      {incident.title}
-                    </h4>
-                    <div className="text-[11px] text-gray-600 mb-2">
-                      📍 {incident.district} • 📅 {incident.incident_date}
-                    </div>
-                    <a
-                      href={incident.proof_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 font-medium inline-flex items-center gap-1 hover:underline"
-                    >
-                      View Source Reference <ExternalLink size={11} />
-                    </a>
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
+                  </Popup>
+                </CircleMarker>
+              );
+            })}
           </MapContainer>
+        </div>
 
-          {/* Quick Inspector Drawer with AI Strategy Playbooks */}
-          {selectedIncident && (
-            <div className="absolute right-4 top-4 w-[430px] max-h-[90%] bg-[#111827]/95 backdrop-blur-md border border-gray-700/80 rounded-xl p-5 shadow-2xl z-[1000] text-xs flex flex-col space-y-3 overflow-hidden">
-              <div className="flex items-center justify-between shrink-0">
+        {/* Right Strategic Intelligence Drawer */}
+        {selectedIncident && (
+          <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
+            {/* Drawer Header */}
+            <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
+              <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-[10px] tracking-wider uppercase text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
                     {selectedIncident.category}
                   </span>
                   {selectedIncident.is_actionable && (
-                    <span className="font-semibold text-[10px] tracking-wider uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
-                      <Sparkles size={11} /> Actionable Issue
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase flex items-center gap-1">
+                      <Crosshair size={11} />
+                      Actionable Issue
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => setSelectedIncident(null)}
-                  className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"
-                >
-                  <X size={16} />
-                </button>
+                <h2 className="text-sm font-bold text-slate-100 leading-snug">
+                  {selectedIncident.title}
+                </h2>
               </div>
+              <button
+                onClick={() => setSelectedIncident(null)}
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
-              <h2 className="font-semibold text-sm text-white leading-relaxed line-clamp-2 shrink-0">
-                {selectedIncident.title}
-              </h2>
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-slate-800 bg-slate-950/40 text-xs font-semibold">
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all ${
+                  activeTab === 'details'
+                    ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Details
+              </button>
+              <button
+                onClick={() => setActiveTab('attack')}
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'attack'
+                    ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Flame size={13} />
+                Attack Angle
+              </button>
+              <button
+                onClick={() => setActiveTab('defense')}
+                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 ${
+                  activeTab === 'defense'
+                    ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
+                    : 'border-transparent text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <ShieldCheck size={13} />
+                Defense Rebuttal
+              </button>
+            </div>
 
-              {/* Playbook Navigation Tabs */}
-              <div className="flex border-b border-gray-800 gap-1 shrink-0">
-                <button
-                  onClick={() => setActivePlaybookTab('details')}
-                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
-                    activePlaybookTab === 'details'
-                      ? 'border-amber-400 text-amber-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <FileText size={12} /> Details
-                </button>
-                <button
-                  onClick={() => setActivePlaybookTab('attack')}
-                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
-                    activePlaybookTab === 'attack'
-                      ? 'border-red-400 text-red-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <Swords size={12} /> Attack Angle
-                </button>
-                <button
-                  onClick={() => setActivePlaybookTab('defend')}
-                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
-                    activePlaybookTab === 'defend'
-                      ? 'border-emerald-400 text-emerald-400'
-                      : 'border-transparent text-gray-400 hover:text-gray-200'
-                  }`}
-                >
-                  <ShieldCheck size={12} /> Defense Rebuttal
-                </button>
-              </div>
-
-              {/* Tab Contents */}
-              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-                {activePlaybookTab === 'details' && (
-                  <>
-                    <div className="grid grid-cols-2 gap-2 py-2 border-y border-gray-800 text-[11px]">
-                      <div>
-                        <span className="text-gray-500 block">District</span>
-                        <span className="text-gray-200 font-medium">{selectedIncident.district}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 block">Incident Date</span>
-                        <span className="text-gray-200 font-medium">{selectedIncident.incident_date}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 block">Severity Tier</span>
-                        <span className="text-amber-400 font-semibold">{selectedIncident.severity}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 block">Strategic Tag</span>
-                        <span className="text-gray-200 font-medium">{selectedIncident.strategic_tag || 'Routine Feed'}</span>
-                      </div>
-                    </div>
-                    <div className="bg-[#1e293b]/50 p-3 rounded-lg border border-gray-800 text-[11px] text-gray-300 leading-relaxed">
-                      <span className="text-gray-500 block text-[10px] uppercase font-bold mb-1">Intelligence Summary</span>
+            {/* Drawer Body Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+              {/* Tab 1: Details */}
+              {activeTab === 'details' && (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                      Incident Summary
+                    </h4>
+                    <p className="text-slate-300 leading-relaxed bg-slate-950/50 p-3 rounded-lg border border-slate-800">
                       {selectedIncident.summary}
-                    </div>
-                  </>
-                )}
-
-                {activePlaybookTab === 'attack' && (
-                  <div className="space-y-2.5 bg-red-950/20 border border-red-900/40 p-3 rounded-lg text-[11px]">
-                    <div className="flex items-center gap-1.5 text-red-400 font-semibold">
-                      <Swords size={13} />
-                      <span>Opposition Attack Strategy (DMK / AIADMK)</span>
-                    </div>
-
-                    <p className="text-gray-300 leading-relaxed">
-                      <strong>AI Context Analysis:</strong>{' '}
-                      {selectedIncident.attack_angle
-                        ? selectedIncident.attack_angle
-                        : `${selectedIncident.district} பகுதியில் ஏற்பட்டுள்ள நிர்வாகக் குறைபாடு மக்கள் அதிருப்தியை ஏற்படுத்தியுள்ளது.`}
                     </p>
-
-                    <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
-                      <span className="text-amber-400 font-bold block text-[10px] uppercase">Ready-to-Post Charge Draft:</span>
-                      <p className="italic">
-                        "{selectedIncident.district}-ல் நிகழ்ந்த இந்த சம்பவத்திற்கு ஆளும் அரசு என்ன நடவடிக்கை எடுத்துள்ளது? மக்கள் நலனில் மெத்தனப் போக்கு ஏன்?"
-                      </p>
-                    </div>
-
-                    <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>கள அளவில் மாவட்ட நிர்வாகத்திடம் விளக்கம் கோரும் மனு அளிக்கவும்.</li>
-                      <li>பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை ஆவணப்படுத்தி கேள்வி எழுப்பவும்.</li>
-                    </ul>
                   </div>
-                )}
 
-                {activePlaybookTab === 'defend' && (
-                  <div className="space-y-2.5 bg-emerald-950/20 border border-emerald-900/40 p-3 rounded-lg text-[11px]">
-                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-                      <ShieldCheck size={13} />
-                      <span>Governance Counter & Defense (TVK War-Room)</span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block">District</span>
+                      <span className="font-semibold text-slate-200">{selectedIncident.district}</span>
                     </div>
+                    <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block">Source Outlet</span>
+                      <span className="font-semibold text-slate-200">{selectedIncident.source_outlet}</span>
+                    </div>
+                  </div>
 
-                    <p className="text-gray-300 leading-relaxed">
-                      <strong>Damage Control Point:</strong>{' '}
-                      {selectedIncident.defense_angle
-                        ? selectedIncident.defense_angle
-                        : 'துறை சார்ந்த அதிகாரிகளிடம் உண்மை நிலவர அறிக்கை பெற்று துரித நடவடிக்கை எடுக்கப்பட வேண்டும்.'}
+                  {selectedIncident.strategic_tag && (
+                    <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
+                      <span className="text-slate-500 block text-[11px]">Strategic Classification</span>
+                      <span className="font-semibold text-indigo-300">{selectedIncident.strategic_tag}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Attack Angle (Opposition Lens) */}
+              {activeTab === 'attack' && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-rose-950/30 border border-rose-800/40 rounded-lg">
+                    <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
+                      Opposition Charge Point ({warRoomLens} Lens)
+                    </span>
+                    <p className="text-slate-200 font-medium leading-relaxed">
+                      {selectedIncident.attack_angle ||
+                        `${selectedIncident.district}-ல் அரசு நிர்வாகத்தின் மெத்தனத்தால் மக்கள் பாதிக்கப்பட்டுள்ளனர். துறை அதிகாரிகள் உடனடி பதில் அளிக்க வேண்டும்.`}
                     </p>
+                  </div>
 
-                    <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
-                      <span className="text-emerald-400 font-bold block text-[10px] uppercase">Rebuttal Fact-Check Draft:</span>
-                      <p className="italic">
-                        "இச்சம்பவம் தொடர்பாக அரசு உரிய துறைகள் மூலம் உடனடி நிவாரண நடவடிக்கைகளை மேற்கொண்டுள்ளது; தவறான தகவல்களை நம்ப வேண்டாம்."
-                      </p>
+                  {/* Ready to post draft */}
+                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-400 uppercase">
+                        Ready-to-Post Charge Draft
+                      </span>
+                      <button
+                        onClick={() =>
+                          handleCopyText(
+                            `[FonsOS Alert - ${selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
+                          )
+                        }
+                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded"
+                      >
+                        {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+                        <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
+                      </button>
                     </div>
 
-                    <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>24 மணி நேர துரித நடவடிக்கை அறிக்கையை மக்கள் மத்தியில் பகிரவும்.</li>
-                      <li>சமூக வலைதளங்களில் துறைசார்ந்த உண்மைத் தகவல்களை முன்னிறுத்தவும்.</li>
-                    </ul>
+                    <p className="text-slate-300 italic text-[11px] leading-relaxed">
+                      "{selectedIncident.district}-ல் நிகழ்ந்த இந்த சம்பவத்திற்கு ஆளும் அரசு என்ன நடவடிக்கை எடுத்துள்ளது? மக்கள் நலனில் மெத்தனப் போக்கு ஏன்?"
+                    </p>
                   </div>
-                )}
-              </div>
 
+                  <div className="space-y-1 text-slate-400 text-[11px]">
+                    <div>• கள அளவில் மாவட்ட நிர்வாகத்திடம் விளக்கம் கோரும் மனு அளிக்கலாம்.</div>
+                    <div>• பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை ஆவணப்படுத்தி கேள்வி எழுப்பலாம்.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Defense Rebuttal (TVK Ruling Lens) */}
+              {activeTab === 'defense' && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
+                      Governance Counter & Defense (TVK War-Room)
+                    </span>
+                    <p className="text-slate-200 font-medium leading-relaxed">
+                      {selectedIncident.defense_angle ||
+                        'இச்சம்பவம் தொடர்பாக அரசு உரிய துறைகள் மூலம் உடனடி நிவாரண நடவடிக்கைகளை மேற்கொண்டுள்ளது; கள நிலவரம் தொடர்ந்து கண்காணிக்கப்படுகிறது.'}
+                    </p>
+                  </div>
+
+                  {/* Rebuttal Fact-Check Draft */}
+                  <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase">
+                        Rebuttal Fact-Check Draft
+                      </span>
+                      <button
+                        onClick={() =>
+                          handleCopyText(
+                            `[TVK Governance Update - ${selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
+                          )
+                        }
+                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded"
+                      >
+                        {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+                        <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+
+                    <p className="text-slate-300 italic text-[11px] leading-relaxed">
+                      "இச்சம்பவம் தொடர்பாக அரசு உரிய துறைகள் மூலம் உடனடி நிவாரண நடவடிக்கைகளை மேற்கொண்டுள்ளது. தவறான தகவல்களை நம்ப வேண்டாம்."
+                    </p>
+                  </div>
+
+                  <div className="space-y-1 text-slate-400 text-[11px]">
+                    <div>• கள அலுவலர்கள் மூலம் தீர்வு அறிக்கையைத் தயார் செய்து சமர்ப்பிக்கவும்.</div>
+                    <div>• வதந்திகளுக்கு முற்றுப்புள்ளி வைக்கும் அதிகாரப்பூர்வ உண்மை அறிக்கையைப் பகிரவும்.</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Drawer Footer: External Proof */}
+            <div className="p-3 border-t border-slate-800 bg-slate-950/60">
               <a
                 href={selectedIncident.proof_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition shrink-0"
+                className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-md"
               >
                 <span>Examine Public Proof / Article</span>
                 <ExternalLink size={13} />
               </a>
             </div>
-          )}
-        </main>
+          </div>
+        )}
       </div>
     </div>
   );
