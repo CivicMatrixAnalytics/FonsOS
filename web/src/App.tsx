@@ -18,7 +18,8 @@ import {
   ShieldCheck,
   FileText,
   Target,
-  LifeBuoy
+  LifeBuoy,
+  Sparkles
 } from 'lucide-react';
 
 interface Incident {
@@ -33,6 +34,10 @@ interface Incident {
   source_outlet: string;
   proof_url: string;
   incident_date: string;
+  is_actionable?: boolean;
+  strategic_tag?: string | null;
+  attack_angle?: string | null;
+  defense_angle?: string | null;
 }
 
 type PersonaMode = 'neutral' | 'tvk_ruling' | 'dmk_opposition' | 'aiadmk_opposition';
@@ -376,7 +381,7 @@ export default function App() {
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase ${
                         item.category === 'Corruption' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
                         item.category === 'Law & Order' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
@@ -389,16 +394,26 @@ export default function App() {
                         {item.category}
                       </span>
 
-                      {/* Dynamic Lens Action Indicator */}
-                      {persona === 'tvk_ruling' && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/30 uppercase flex items-center gap-1">
-                          Rebuttal Target
-                        </span>
-                      )}
-                      {(persona === 'dmk_opposition' || persona === 'aiadmk_opposition') && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-400/10 text-red-300 border border-red-400/30 uppercase flex items-center gap-1">
-                          Charge Point
-                        </span>
+                      {/* AI Context-Aware Action Badges */}
+                      {item.is_actionable ? (
+                        <>
+                          {persona === 'tvk_ruling' && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-300 border border-amber-400/40 uppercase flex items-center gap-1 shadow-sm">
+                              <Sparkles size={10} /> Rebuttal Target
+                            </span>
+                          )}
+                          {(persona === 'dmk_opposition' || persona === 'aiadmk_opposition') && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 uppercase flex items-center gap-1 shadow-sm">
+                              <Sparkles size={10} /> Charge Point
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        item.strategic_tag && (
+                          <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                            {item.strategic_tag}
+                          </span>
+                        )
                       )}
                     </div>
 
@@ -478,13 +493,20 @@ export default function App() {
             ))}
           </MapContainer>
 
-          {/* Quick Inspector Drawer with Strategy Playbooks */}
+          {/* Quick Inspector Drawer with AI Strategy Playbooks */}
           {selectedIncident && (
-            <div className="absolute right-4 top-4 w-[420px] max-h-[90%] bg-[#111827]/95 backdrop-blur-md border border-gray-700/80 rounded-xl p-5 shadow-2xl z-[1000] text-xs flex flex-col space-y-3 overflow-hidden">
+            <div className="absolute right-4 top-4 w-[430px] max-h-[90%] bg-[#111827]/95 backdrop-blur-md border border-gray-700/80 rounded-xl p-5 shadow-2xl z-[1000] text-xs flex flex-col space-y-3 overflow-hidden">
               <div className="flex items-center justify-between shrink-0">
-                <span className="font-bold text-[10px] tracking-wider uppercase text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
-                  {selectedIncident.category}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-[10px] tracking-wider uppercase text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                    {selectedIncident.category}
+                  </span>
+                  {selectedIncident.is_actionable && (
+                    <span className="font-semibold text-[10px] tracking-wider uppercase text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded flex items-center gap-1">
+                      <Sparkles size={11} /> Actionable Issue
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={() => setSelectedIncident(null)}
                   className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800"
@@ -549,8 +571,8 @@ export default function App() {
                         <span className="text-amber-400 font-semibold">{selectedIncident.severity}</span>
                       </div>
                       <div>
-                        <span className="text-gray-500 block">Reported By</span>
-                        <span className="text-gray-200 font-medium">{selectedIncident.source_outlet}</span>
+                        <span className="text-gray-500 block">Strategic Tag</span>
+                        <span className="text-gray-200 font-medium">{selectedIncident.strategic_tag || 'Routine Feed'}</span>
                       </div>
                     </div>
                     <div className="bg-[#1e293b]/50 p-3 rounded-lg border border-gray-800 text-[11px] text-gray-300 leading-relaxed">
@@ -566,18 +588,24 @@ export default function App() {
                       <Swords size={13} />
                       <span>Opposition Attack Strategy (DMK / AIADMK)</span>
                     </div>
+
                     <p className="text-gray-300 leading-relaxed">
-                      <strong>Ground Vulnerability:</strong> {selectedIncident.district} பகுதியில் நிர்வாகக் குறைபாடு காரணமாக பொது அமைதி/சேவை பாதிப்பு ஏற்பட்டுள்ளது.
+                      <strong>AI Context Analysis:</strong>{' '}
+                      {selectedIncident.attack_angle
+                        ? selectedIncident.attack_angle
+                        : `${selectedIncident.district} பகுதியில் ஏற்பட்டுள்ள நிர்வாகக் குறைபாடு மக்கள் அதிருப்தியை ஏற்படுத்தியுள்ளது.`}
                     </p>
+
                     <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
-                      <span className="text-amber-400 font-bold block text-[10px] uppercase">Ready-to-Post Campaign Question:</span>
+                      <span className="text-amber-400 font-bold block text-[10px] uppercase">Ready-to-Post Charge Draft:</span>
                       <p className="italic">
-                        "{selectedIncident.district}-ல் மக்கள் சந்திக்கும் இந்த அநீதிக்கு மாவட்ட நிர்வாகமும் ஆளும் தரப்பும் என்ன பதில் சொல்லப் போகிறது? உடனடியாக நடவடிக்கை எங்கே?"
+                        "{selectedIncident.district}-ல் நிகழ்ந்த இந்த சம்பவத்திற்கு ஆளும் அரசு என்ன நடவடிக்கை எடுத்துள்ளது? மக்கள் நலனில் மெத்தனப் போக்கு ஏன்?"
                       </p>
                     </div>
+
                     <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>உள்ளூர் சட்டமன்ற அலுவலகத்தில் உடனடி மனு சமர்ப்பிக்கவும்.</li>
-                      <li>மாவட்ட பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை முன்வைத்து கேள்வி எழுப்பவும்.</li>
+                      <li>கள அளவில் மாவட்ட நிர்வாகத்திடம் விளக்கம் கோரும் மனு அளிக்கவும்.</li>
+                      <li>பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை ஆவணப்படுத்தி கேள்வி எழுப்பவும்.</li>
                     </ul>
                   </div>
                 )}
@@ -588,18 +616,24 @@ export default function App() {
                       <ShieldCheck size={13} />
                       <span>Governance Counter & Defense (TVK War-Room)</span>
                     </div>
+
                     <p className="text-gray-300 leading-relaxed">
-                      <strong>Damage Control Action:</strong> துறைசார்ந்த அதிகாரிகள் உடனடியாக தலையிட்டு உண்மை நிலவரத்தை மக்களுக்கு தெளிவுபடுத்த வேண்டும்.
+                      <strong>Damage Control Point:</strong>{' '}
+                      {selectedIncident.defense_angle
+                        ? selectedIncident.defense_angle
+                        : 'துறை சார்ந்த அதிகாரிகளிடம் உண்மை நிலவர அறிக்கை பெற்று துரித நடவடிக்கை எடுக்கப்பட வேண்டும்.'}
                     </p>
+
                     <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
                       <span className="text-emerald-400 font-bold block text-[10px] uppercase">Rebuttal Fact-Check Draft:</span>
                       <p className="italic">
-                        "இந்த விவகாரத்தில் அரசு உரிய துறை மூலம் உடனடி நடவடிக்கை மேற்கொண்டுள்ளது. எதிர்க்கட்சிகள் பரப்பும் வதந்திகளைப் புறந்தள்ளி உண்மை நிலையை அறிவோம்."
+                        "இச்சம்பவம் தொடர்பாக அரசு உரிய துறைகள் மூலம் உடனடி நிவாரண நடவடிக்கைகளை மேற்கொண்டுள்ளது; தவறான தகவல்களை நம்ப வேண்டாம்."
                       </p>
                     </div>
+
                     <ul className="list-disc list-inside text-gray-400 space-y-1">
-                      <li>24 மணி நேர துரித நடவடிக்கை அறிக்கையை மாவட்ட அளவில் வெளியிடவும்.</li>
-                      <li>துறைசார்ந்த செய்திக்குறிப்புடன் சமூக வலைதள அவதூறுகளுக்கு விளக்கம் தரவும்.</li>
+                      <li>24 மணி நேர துரித நடவடிக்கை அறிக்கையை மக்கள் மத்தியில் பகிரவும்.</li>
+                      <li>சமூக வலைதளங்களில் துறைசார்ந்த உண்மைத் தகவல்களை முன்னிறுத்தவும்.</li>
                     </ul>
                   </div>
                 )}
