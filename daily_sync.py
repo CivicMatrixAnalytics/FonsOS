@@ -8,7 +8,7 @@ from supabase import create_client, Client
 
 # Environment variables-ல் இருந்து எடுக்கப்படும் (Local-ல் fallback)
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://yqystwfszetkbhwggzrv.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_secret_9hSlVMdWZd6a0uiAlOLalQ_9fDFgetf")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 TN_DISTRICTS = {

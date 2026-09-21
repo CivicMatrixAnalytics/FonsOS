@@ -7,7 +7,7 @@ from supabase import create_client, Client
 
 # --- FonsOS SUPABASE CONFIG ---
 SUPABASE_URL = "https://yqystwfszetkbhwggzrv.supabase.co"
-SUPABASE_KEY = "sb_secret_9hSlVMdWZd6a0uiAlOLalQ_9fDFgetf"
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- DISTRICT COORDINATES & KEYWORDS ---
