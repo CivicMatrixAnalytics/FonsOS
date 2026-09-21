@@ -17,8 +17,6 @@ import {
   FileDown, 
   Check, 
   X, 
-  Crosshair, 
-  Flame, 
   ShieldCheck 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
@@ -41,7 +39,7 @@ interface Incident {
   defense_angle?: string;
 }
 
-// Fly-to controller for smooth Leaflet camera movement
+// Controller to smoothly pan & zoom map when an incident is selected
 function MapFlyToController({ selectedCoord }: { selectedCoord: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
@@ -92,7 +90,7 @@ export default function App() {
     fetchIncidents();
   }, []);
 
-  // Synchronized Filter Logic (District, Category, Actionable, Search)
+  // Filter Logic (District, Category, Actionable, Search Query)
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
@@ -131,7 +129,7 @@ export default function App() {
     setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  // Feature 4: Full Dossier Export Engine
+  // Dossier Export to Clipboard
   const handleExportDossier = () => {
     const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
     const textLines = [
@@ -213,7 +211,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* War-Room Tactical Banner */}
+      {/* War-Room Lens Tactical Banner */}
       <div
         className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
           warRoomLens === 'TVK'
@@ -222,7 +220,7 @@ export default function App() {
         }`}
       >
         <div className="flex items-center gap-2">
-          {warRoomLens === 'TVK' ? <ShieldCheck size={15} /> : <Flame size={15} />}
+          {warRoomLens === 'TVK' ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
           <span>
             {warRoomLens === 'TVK'
               ? 'TVK RULING LENS ACTIVE | Focus: Rapid Response, Damage Control & Countering Opposition Allegations'
@@ -234,11 +232,10 @@ export default function App() {
         </span>
       </div>
 
-      {/* Main Content Workspace */}
+      {/* Main Workspace */}
       <div className="flex flex-1 relative overflow-hidden">
         {/* Left Side: Filterable Feed */}
         <div className="w-[430px] flex flex-col border-r border-slate-800 bg-slate-900/60 backdrop-blur z-10">
-          {/* Interactive Filters */}
           <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900/90">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
@@ -289,7 +286,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Cards List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1.5">
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
@@ -356,7 +352,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Leaflet Interactive Map */}
+        {/* Center: Interactive Leaflet Map */}
         <div className="flex-1 h-full relative z-0">
           <MapContainer
             center={[11.1271, 78.6569]}
@@ -417,7 +413,7 @@ export default function App() {
           </MapContainer>
         </div>
 
-        {/* Right Drawer: Intelligence Playbook */}
+        {/* Right Drawer: Intelligence Details & Angles */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
@@ -428,7 +424,7 @@ export default function App() {
                   </span>
                   {selectedIncident.is_actionable && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase flex items-center gap-1">
-                      <Crosshair size={11} />
+                      <span>🎯</span>
                       Actionable Issue
                     </span>
                   )}
@@ -464,7 +460,7 @@ export default function App() {
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                <Flame size={13} />
+                <span>🔥</span>
                 Attack Angle
               </button>
               <button
