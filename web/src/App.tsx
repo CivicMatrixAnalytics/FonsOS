@@ -13,7 +13,11 @@ import {
   AlertOctagon, 
   X,
   Radio,
-  RotateCw
+  RotateCw,
+  Swords,
+  ShieldCheck,
+  Building2,
+  FileText
 } from 'lucide-react';
 
 interface Incident {
@@ -29,6 +33,8 @@ interface Incident {
   proof_url: string;
   incident_date: string;
 }
+
+type PersonaMode = 'neutral' | 'tvk_ruling' | 'dmk_opposition' | 'aiadmk_opposition';
 
 const createMarkerIcon = (category: string) => {
   let color = '#ef4444'; 
@@ -120,6 +126,10 @@ export default function App() {
   const [activeCoords, setActiveCoords] = useState<[number, number] | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
 
+  // Strategic Lens & Drawer State
+  const [persona, setPersona] = useState<PersonaMode>('neutral');
+  const [activePlaybookTab, setActivePlaybookTab] = useState<'details' | 'attack' | 'defend'>('details');
+
   const fetchIncidents = async () => {
     setIsRefreshing(true);
     const { data, error } = await supabase
@@ -137,6 +147,17 @@ export default function App() {
   useEffect(() => {
     fetchIncidents();
   }, []);
+
+  // Persona change avvagane drawer tab default-ga set avthundi
+  useEffect(() => {
+    if (persona === 'tvk_ruling') {
+      setActivePlaybookTab('defend');
+    } else if (persona === 'dmk_opposition' || persona === 'aiadmk_opposition') {
+      setActivePlaybookTab('attack');
+    } else {
+      setActivePlaybookTab('details');
+    }
+  }, [persona]);
 
   const stats = useMemo(() => {
     return {
@@ -173,7 +194,7 @@ export default function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0b0f19] text-gray-100 overflow-hidden font-sans">
       {/* Top Header */}
-      <header className="h-16 border-b border-gray-800 bg-[#0f172a] px-6 flex items-center justify-between z-10 shrink-0">
+      <header className="h-16 border-b border-gray-800 bg-[#0f172a] px-5 flex items-center justify-between z-10 shrink-0">
         <div className="flex items-center gap-3">
           <div className="bg-amber-500/10 border border-amber-500/30 p-2 rounded-lg text-amber-400">
             <ShieldAlert size={22} />
@@ -189,8 +210,22 @@ export default function App() {
           </div>
         </div>
 
-        {/* Top KPI Metrics Bar */}
-        <div className="hidden lg:flex items-center gap-3 text-xs">
+        {/* Strategic Persona Switcher & Controls */}
+        <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-1.5 bg-[#1e293b] border border-gray-700 px-2 py-1 rounded-lg">
+            <span className="text-gray-400 text-[11px] font-medium hidden sm:inline">War-Room Lens:</span>
+            <select
+              value={persona}
+              onChange={(e) => setPersona(e.target.value as PersonaMode)}
+              className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer text-xs"
+            >
+              <option value="neutral" className="bg-[#0f172a] text-gray-200">Neutral (CMA Master)</option>
+              <option value="tvk_ruling" className="bg-[#0f172a] text-yellow-400">TVK (Ruling - Defend/Delivery)</option>
+              <option value="dmk_opposition" className="bg-[#0f172a] text-red-400">DMK (Opposition - Attack/Expose)</option>
+              <option value="aiadmk_opposition" className="bg-[#0f172a] text-green-400">AIADMK (Opposition Front)</option>
+            </select>
+          </div>
+
           <button
             onClick={fetchIncidents}
             disabled={isRefreshing}
@@ -198,23 +233,20 @@ export default function App() {
             title="Fetch Latest from Supabase"
           >
             <RotateCw size={13} className={isRefreshing ? 'animate-spin' : ''} />
-            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
+            <span className="hidden md:inline">{isRefreshing ? 'Refreshing...' : 'Refresh Feed'}</span>
           </button>
 
-          <div className="bg-gray-800/80 px-3 py-1.5 rounded-lg border border-gray-700/80 flex items-center gap-2">
+          <div className="hidden xl:flex items-center gap-2 bg-gray-800/80 px-3 py-1.5 rounded-lg border border-gray-700/80">
             <Activity size={14} className="text-blue-400" />
             <span>Total: <strong className="text-white">{stats.total}</strong></span>
           </div>
-          <div className="bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30 flex items-center gap-2 text-amber-400">
+          <div className="hidden xl:flex items-center gap-2 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-400">
             <Flame size={14} />
             <span>Corruption: <strong>{stats.corruption}</strong></span>
           </div>
-          <div className="bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/30 flex items-center gap-2 text-red-400">
+          <div className="hidden xl:flex items-center gap-2 bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400">
             <AlertOctagon size={14} />
             <span>Law & Order: <strong>{stats.lawOrder}</strong></span>
-          </div>
-          <div className="text-gray-400 border-l border-gray-700 pl-3">
-            Since <span className="text-amber-400 font-semibold">May 10, 2026</span>
           </div>
         </div>
       </header>
@@ -370,10 +402,10 @@ export default function App() {
             ))}
           </MapContainer>
 
-          {/* Quick Inspector Drawer */}
+          {/* Quick Inspector Drawer with Strategy Playbooks */}
           {selectedIncident && (
-            <div className="absolute right-4 top-4 w-96 bg-[#111827]/95 backdrop-blur-md border border-gray-700/80 rounded-xl p-5 shadow-2xl z-[1000] text-xs space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="absolute right-4 top-4 w-[420px] max-h-[90%] bg-[#111827]/95 backdrop-blur-md border border-gray-700/80 rounded-xl p-5 shadow-2xl z-[1000] text-xs flex flex-col space-y-3 overflow-hidden">
+              <div className="flex items-center justify-between shrink-0">
                 <span className="font-bold text-[10px] tracking-wider uppercase text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
                   {selectedIncident.category}
                 </span>
@@ -385,34 +417,123 @@ export default function App() {
                 </button>
               </div>
 
-              <h2 className="font-semibold text-sm text-white leading-relaxed">
+              <h2 className="font-semibold text-sm text-white leading-relaxed line-clamp-2 shrink-0">
                 {selectedIncident.title}
               </h2>
 
-              <div className="grid grid-cols-2 gap-2 py-2 border-y border-gray-800 text-[11px]">
-                <div>
-                  <span className="text-gray-500 block">District</span>
-                  <span className="text-gray-200 font-medium">{selectedIncident.district}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Incident Date</span>
-                  <span className="text-gray-200 font-medium">{selectedIncident.incident_date}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Severity Tier</span>
-                  <span className="text-amber-400 font-semibold">{selectedIncident.severity}</span>
-                </div>
-                <div>
-                  <span className="text-gray-500 block">Reported By</span>
-                  <span className="text-gray-200 font-medium">{selectedIncident.source_outlet}</span>
-                </div>
+              {/* Playbook Navigation Tabs */}
+              <div className="flex border-b border-gray-800 gap-1 shrink-0">
+                <button
+                  onClick={() => setActivePlaybookTab('details')}
+                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
+                    activePlaybookTab === 'details'
+                      ? 'border-amber-400 text-amber-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <FileText size={12} /> Details
+                </button>
+                <button
+                  onClick={() => setActivePlaybookTab('attack')}
+                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
+                    activePlaybookTab === 'attack'
+                      ? 'border-red-400 text-red-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <Swords size={12} /> Attack Angle
+                </button>
+                <button
+                  onClick={() => setActivePlaybookTab('defend')}
+                  className={`px-3 py-1.5 font-medium border-b-2 transition flex items-center gap-1.5 ${
+                    activePlaybookTab === 'defend'
+                      ? 'border-emerald-400 text-emerald-400'
+                      : 'border-transparent text-gray-400 hover:text-gray-200'
+                  }`}
+                >
+                  <ShieldCheck size={12} /> Defense Rebuttal
+                </button>
+              </div>
+
+              {/* Tab Contents */}
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                {activePlaybookTab === 'details' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2 py-2 border-y border-gray-800 text-[11px]">
+                      <div>
+                        <span className="text-gray-500 block">District</span>
+                        <span className="text-gray-200 font-medium">{selectedIncident.district}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">Incident Date</span>
+                        <span className="text-gray-200 font-medium">{selectedIncident.incident_date}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">Severity Tier</span>
+                        <span className="text-amber-400 font-semibold">{selectedIncident.severity}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 block">Reported By</span>
+                        <span className="text-gray-200 font-medium">{selectedIncident.source_outlet}</span>
+                      </div>
+                    </div>
+                    <div className="bg-[#1e293b]/50 p-3 rounded-lg border border-gray-800 text-[11px] text-gray-300 leading-relaxed">
+                      <span className="text-gray-500 block text-[10px] uppercase font-bold mb-1">Intelligence Summary</span>
+                      {selectedIncident.summary}
+                    </div>
+                  </>
+                )}
+
+                {activePlaybookTab === 'attack' && (
+                  <div className="space-y-2.5 bg-red-950/20 border border-red-900/40 p-3 rounded-lg text-[11px]">
+                    <div className="flex items-center gap-1.5 text-red-400 font-semibold">
+                      <Swords size={13} />
+                      <span>Opposition Attack Strategy (DMK / AIADMK)</span>
+                    </div>
+                    <p className="text-gray-300 leading-relaxed">
+                      <strong>Ground Vulnerability:</strong> {selectedIncident.district} prantham lo idhi administrative oversight kindhaki vasthundi.
+                    </p>
+                    <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
+                      <span className="text-amber-400 font-bold block text-[10px] uppercase">Ready-to-Post Campaign Question:</span>
+                      <p className="italic">
+                        "{selectedIncident.district}-lo intha jaruguthunna official administrative machinery em chesthondi? Public safety mariyu grievance redressal ekkada?"
+                      </p>
+                    </div>
+                    <ul className="list-disc list-inside text-gray-400 space-y-1">
+                      <li>Local MLA office daggara representation memo file cheyyandi.</li>
+                      <li>District level press briefing lo direct questions raise cheyyandi.</li>
+                    </ul>
+                  </div>
+                )}
+
+                {activePlaybookTab === 'defend' && (
+                  <div className="space-y-2.5 bg-emerald-950/20 border border-emerald-900/40 p-3 rounded-lg text-[11px]">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                      <ShieldCheck size={13} />
+                      <span>Governance Counter & Defense (TVK War-Room)</span>
+                    </div>
+                    <p className="text-gray-300 leading-relaxed">
+                      <strong>Damage Control Action:</strong> Sambandhitha departmental district authorities ventane on-ground inquiry report register cheyyali.
+                    </p>
+                    <div className="bg-[#0f172a] p-2.5 rounded border border-gray-800 space-y-1.5 text-gray-300">
+                      <span className="text-emerald-400 font-bold block text-[10px] uppercase">Rebuttal Fact-Check Draft:</span>
+                      <p className="italic">
+                        "Sanghatana meedha departmental action already take up ayyindi. Opposition pracharam chesthunna misleading narratives ni public believe cheyodhu."
+                      </p>
+                    </div>
+                    <ul className="list-disc list-inside text-gray-400 space-y-1">
+                      <li>24-hour rapid response status report release cheyyandi.</li>
+                      <li>Department official statement tho social media counter push cheyyandi.</li>
+                    </ul>
+                  </div>
+                )}
               </div>
 
               <a
                 href={selectedIncident.proof_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition"
+                className="w-full bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition shrink-0"
               >
                 <span>Examine Public Proof / Article</span>
                 <ExternalLink size={13} />
