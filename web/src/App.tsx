@@ -16,7 +16,9 @@ import {
   RotateCw,
   Swords,
   ShieldCheck,
-  FileText
+  FileText,
+  Target,
+  LifeBuoy
 } from 'lucide-react';
 
 interface Incident {
@@ -35,7 +37,7 @@ interface Incident {
 
 type PersonaMode = 'neutral' | 'tvk_ruling' | 'dmk_opposition' | 'aiadmk_opposition';
 
-const createMarkerIcon = (category: string) => {
+const createMarkerIcon = (category: string, persona: PersonaMode) => {
   let color = '#ef4444'; 
   if (category === 'Corruption') color = '#f59e0b';
   else if (category === 'Infrastructure') color = '#3b82f6';
@@ -44,21 +46,34 @@ const createMarkerIcon = (category: string) => {
   else if (category === 'Health & Environment') color = '#06b6d4';
   else if (category === 'Education & Jobs') color = '#ec4899';
 
+  let borderColor = '#ffffff';
+  let glow = color;
+  if (persona === 'tvk_ruling') {
+    borderColor = '#facc15';
+    glow = '#eab308';
+  } else if (persona === 'dmk_opposition') {
+    borderColor = '#ef4444';
+    glow = '#dc2626';
+  } else if (persona === 'aiadmk_opposition') {
+    borderColor = '#22c55e';
+    glow = '#16a34a';
+  }
+
   return L.divIcon({
     className: 'custom-fons-pin',
     html: `
       <div style="
         background-color: ${color};
-        width: 13px;
-        height: 13px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        border: 2px solid #ffffff;
-        box-shadow: 0 0 12px ${color};
+        border: 2px solid ${borderColor};
+        box-shadow: 0 0 14px ${glow};
         cursor: pointer;
       "></div>
     `,
-    iconSize: [13, 13],
-    iconAnchor: [6, 6],
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
   });
 };
 
@@ -188,6 +203,36 @@ export default function App() {
     'Education & Jobs'
   ];
 
+  const getLensBanner = () => {
+    if (persona === 'tvk_ruling') {
+      return {
+        bg: 'bg-amber-500/10 border-amber-500/30 text-amber-300',
+        label: 'TVK RULING LENS ACTIVE',
+        desc: 'Focus: Rapid Response, Damage Control & Countering Opposition Allegations',
+        icon: <LifeBuoy size={14} className="text-amber-400" />
+      };
+    }
+    if (persona === 'dmk_opposition') {
+      return {
+        bg: 'bg-red-500/10 border-red-500/30 text-red-300',
+        label: 'DMK OPPOSITION LENS ACTIVE',
+        desc: 'Focus: Anti-Incumbency Flashpoints, Charge Dossiers & Protest Agenda',
+        icon: <Target size={14} className="text-red-400" />
+      };
+    }
+    if (persona === 'aiadmk_opposition') {
+      return {
+        bg: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300',
+        label: 'AIADMK OPPOSITION LENS ACTIVE',
+        desc: 'Focus: Grassroots Scrutiny, Regional Lapses & Accountability Drive',
+        icon: <Swords size={14} className="text-emerald-400" />
+      };
+    }
+    return null;
+  };
+
+  const lensBanner = getLensBanner();
+
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0b0f19] text-gray-100 overflow-hidden font-sans">
       {/* Top Header */}
@@ -209,12 +254,17 @@ export default function App() {
 
         {/* Strategic Persona Switcher & Controls */}
         <div className="flex items-center gap-3 text-xs">
-          <div className="flex items-center gap-1.5 bg-[#1e293b] border border-gray-700 px-2 py-1 rounded-lg">
-            <span className="text-gray-400 text-[11px] font-medium hidden sm:inline">War-Room Lens:</span>
+          <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+            persona === 'tvk_ruling' ? 'bg-amber-500/15 border-amber-500/50 shadow-md shadow-amber-500/10' :
+            persona === 'dmk_opposition' ? 'bg-red-500/15 border-red-500/50 shadow-md shadow-red-500/10' :
+            persona === 'aiadmk_opposition' ? 'bg-emerald-500/15 border-emerald-500/50 shadow-md shadow-emerald-500/10' :
+            'bg-[#1e293b] border-gray-700'
+          }`}>
+            <span className="text-gray-300 text-[11px] font-semibold hidden sm:inline">War-Room Lens:</span>
             <select
               value={persona}
               onChange={(e) => setPersona(e.target.value as PersonaMode)}
-              className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer text-xs"
+              className="bg-transparent font-bold focus:outline-none cursor-pointer text-xs text-white"
             >
               <option value="neutral" className="bg-[#0f172a] text-gray-200">Neutral (CMA Master)</option>
               <option value="tvk_ruling" className="bg-[#0f172a] text-yellow-400">TVK (Ruling - Defend/Delivery)</option>
@@ -247,6 +297,20 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Strategic Lens Active Status Bar */}
+      {lensBanner && (
+        <div className={`px-5 py-1.5 border-b text-xs flex items-center justify-between shrink-0 transition-all ${lensBanner.bg}`}>
+          <div className="flex items-center gap-2">
+            {lensBanner.icon}
+            <span className="font-bold tracking-wider text-[11px]">{lensBanner.label}</span>
+            <span className="hidden md:inline text-gray-300 text-[11px]">| {lensBanner.desc}</span>
+          </div>
+          <div className="text-[10px] font-medium opacity-80 uppercase tracking-wider">
+            Active War-Room Perspective
+          </div>
+        </div>
+      )}
 
       {/* Main Workspace */}
       <div className="flex-1 flex overflow-hidden relative">
@@ -305,24 +369,39 @@ export default function App() {
                     setActiveCoords([item.latitude, item.longitude]);
                     setSelectedIncident(item);
                   }}
-                  className={`p-3.5 rounded-lg border transition cursor-pointer ${
+                  className={`p-3.5 rounded-lg border transition cursor-pointer relative ${
                     selectedIncident?.id === item.id
                       ? 'border-amber-400 bg-[#1e293b] shadow-lg shadow-amber-500/10'
                       : 'border-gray-800/90 bg-[#111827] hover:border-gray-700 hover:bg-[#141d2e]'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase ${
-                      item.category === 'Corruption' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
-                      item.category === 'Law & Order' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
-                      item.category === 'Infrastructure' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
-                      item.category === 'Welfare & Schemes' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' :
-                      item.category === 'Health & Environment' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' :
-                      item.category === 'Education & Jobs' ? 'bg-pink-500/15 text-pink-400 border border-pink-500/30' :
-                      'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    }`}>
-                      {item.category}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase ${
+                        item.category === 'Corruption' ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
+                        item.category === 'Law & Order' ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
+                        item.category === 'Infrastructure' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
+                        item.category === 'Welfare & Schemes' ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30' :
+                        item.category === 'Health & Environment' ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30' :
+                        item.category === 'Education & Jobs' ? 'bg-pink-500/15 text-pink-400 border border-pink-500/30' :
+                        'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                      }`}>
+                        {item.category}
+                      </span>
+
+                      {/* Dynamic Lens Action Indicator */}
+                      {persona === 'tvk_ruling' && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/30 uppercase flex items-center gap-1">
+                          Rebuttal Target
+                        </span>
+                      )}
+                      {(persona === 'dmk_opposition' || persona === 'aiadmk_opposition') && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-400/10 text-red-300 border border-red-400/30 uppercase flex items-center gap-1">
+                          Charge Point
+                        </span>
+                      )}
+                    </div>
+
                     <span className="text-[11px] text-gray-400 flex items-center gap-1">
                       <Calendar size={12} /> {item.incident_date}
                     </span>
@@ -366,7 +445,7 @@ export default function App() {
               <Marker
                 key={incident.id}
                 position={[incident.latitude, incident.longitude]}
-                icon={createMarkerIcon(incident.category)}
+                icon={createMarkerIcon(incident.category, persona)}
                 eventHandlers={{
                   click: () => {
                     setSelectedIncident(incident);
