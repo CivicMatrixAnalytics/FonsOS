@@ -19,9 +19,13 @@ import {
   ShieldCheck,
   Building2,
   MessageCircle,
-  BrainCircuit
+  BrainCircuit,
+  Target,
+  AlertTriangle,
+  UserCheck
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import mlaData from './data/tn_mla_registry.json';
 
 interface Incident {
   id: string;
@@ -50,6 +54,8 @@ interface PoliticalConfig {
   election_cycle: string;
 }
 
+const MLA_REGISTRY: Record<string, { mla_name: string; party: string }> = mlaData as any;
+
 function MapViewController({ 
   selectedCoord, 
   filterCoord 
@@ -76,7 +82,6 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
 
-  // Dynamic Political Config
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
     opposition_parties: ['DMK', 'AIADMK'],
@@ -84,14 +89,11 @@ export default function App() {
   });
   const [warRoomLens, setWarRoomLens] = useState<string>('DMK');
 
-  // Hierarchical Filter states
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
-
-  // Time-Series Spike Filter
   const [timeFilter, setTimeFilter] = useState<'ALL' | '24H' | '7D' | '30D'>('ALL');
 
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
@@ -146,6 +148,11 @@ export default function App() {
   }, []);
 
   const isRulingActive = warRoomLens === politicalConfig.ruling_party;
+
+  const getMlaDetails = (ac_number?: number | null) => {
+    if (!ac_number) return null;
+    return MLA_REGISTRY[String(ac_number)] || null;
+  };
 
   const districtList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
@@ -232,12 +239,15 @@ export default function App() {
   };
 
   const handleWhatsAppShare = (incident: Incident, type: 'attack' | 'defense') => {
+    const mla = getMlaDetails(incident.ac_number);
+    const mlaInfo = mla ? `\n👤 *Sitting MLA:* ${mla.mla_name} (${mla.party})` : '';
+
     const header = type === 'attack' 
       ? `🚨 *[FonsOS War-Room Alert - ${warRoomLens}]*` 
       : `🛡️ *[${politicalConfig.ruling_party} Governance Counter & Fact-Check]*`;
 
     const acInfo = incident.constituency 
-      ? `\n📍 *Constituency:* AC ${incident.ac_number || ''} ${incident.constituency} (${incident.district})`
+      ? `\n📍 *Constituency:* AC ${incident.ac_number || ''} ${incident.constituency} (${incident.district})${mlaInfo}`
       : `\n📍 *District:* ${incident.district}`;
 
     const content = type === 'attack'
@@ -258,9 +268,11 @@ export default function App() {
       ? selectedConstituency 
       : (selectedDistrict !== 'All' ? `${selectedDistrict} District` : 'Tamil Nadu (Statewide)');
 
-    const topIssues = actionable.slice(0, 3).map((item, idx) => 
-      `${idx + 1}. [${item.category}] ${item.title} -> ${isRulingActive ? (item.defense_angle || 'Monitored') : (item.attack_angle || 'Public accountability')}`
-    ).join('\n');
+    const topIssues = actionable.slice(0, 3).map((item, idx) => {
+      const mla = getMlaDetails(item.ac_number);
+      const mlaStr = mla ? ` [MLA: ${mla.mla_name} - ${mla.party}]` : '';
+      return `${idx + 1}. [${item.category}] ${item.title}${mlaStr} -> ${isRulingActive ? (item.defense_angle || 'Monitored') : (item.attack_angle || 'Public accountability')}`;
+    }).join('\n');
 
     const brief = `=============================================================
 FONS-OS EXECUTIVE WAR-ROOM BRIEFING (${warRoomLens} LENS)
@@ -277,7 +289,7 @@ ${topIssues || 'No high-severity actionable incidents recorded in current select
 RECOMMENDED CAMPAIGN DIRECTIVE:
 ${isRulingActive 
   ? `Deploy local ward observers to verify grievance redressal; emphasize administrative containment and refute speculative claims before opposition narrative solidifies.`
-  : `Issue localized constituency charge-sheet targeting infrastructure and administrative lapses; mobilize booth agents to raise awareness across impacted polling stations.`}
+  : `Issue localized constituency charge-sheet targeting sitting MLA administrative lapses; mobilize booth agents across impacted polling stations.`}
 =============================================================`;
 
     navigator.clipboard.writeText(brief);
@@ -306,7 +318,6 @@ ${isRulingActive
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Time-Series Filter */}
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg p-0.5 text-xs">
             {(['ALL', '24H', '7D', '30D'] as const).map((period) => (
               <button
@@ -323,7 +334,6 @@ ${isRulingActive
             ))}
           </div>
 
-          {/* Dynamic Lens Dropdown */}
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
             <span className="text-slate-400 mr-2">Lens:</span>
             <select
@@ -346,7 +356,6 @@ ${isRulingActive
             </select>
           </div>
 
-          {/* AI Executive Briefing Button */}
           <button
             onClick={handleGenerateExecutiveBrief}
             disabled={generatingBrief}
@@ -458,6 +467,8 @@ ${isRulingActive
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
+              const mla = getMlaDetails(incident.ac_number);
+              const isRulingMla = mla && mla.party === politicalConfig.ruling_party;
 
               return (
                 <div
@@ -485,26 +496,43 @@ ${isRulingActive
                         </span>
                       )}
 
-                      {/* Strategic Sentiment Taxonomy Badge */}
+                      {/* Tactical MLA Strategic Alert Badge */}
+                      {mla && !isRulingActive && isRulingMla && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1">
+                          <Target size={10} />
+                          Target Strike
+                        </span>
+                      )}
+
+                      {mla && isRulingActive && isRulingMla && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                          <AlertTriangle size={10} />
+                          Damage Control
+                        </span>
+                      )}
+
+                      {/* Lens-Aware Dynamic Sentiment Badges */}
                       {incident.political_sentiment === 'anti_incumbency' && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
-                          ⚡ Anti-Incumbency
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          isRulingActive
+                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                            : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                        }`}>
+                          {isRulingActive ? '⚠️ Governance Vulnerability' : '⚡ Anti-Incumbency'}
                         </span>
                       )}
                       {incident.political_sentiment === 'ruling_defense' && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
-                          🛡️ Ruling Defense
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                          isRulingActive
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}>
+                          {isRulingActive ? '✅ Scheme Delivery' : '🛡️ Ruling Counter'}
                         </span>
                       )}
                       {incident.political_sentiment === 'neutral' && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
                           🏛️ Civic Neutral
-                        </span>
-                      )}
-
-                      {incident.strategic_tag && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
-                          {incident.strategic_tag}
                         </span>
                       )}
 
@@ -530,7 +558,13 @@ ${isRulingActive
 
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/40 text-[11px] text-slate-400">
                     <span className="flex items-center gap-1">📍 {incident.district}</span>
-                    <span className="text-slate-500 text-[10px]">{incident.source_outlet}</span>
+                    {mla ? (
+                      <span className="text-[10px] font-medium text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                        MLA: {mla.mla_name} ({mla.party})
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 text-[10px]">{incident.source_outlet}</span>
+                    )}
                   </div>
                 </div>
               );
@@ -622,11 +656,6 @@ ${isRulingActive
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                     {selectedIncident.category}
                   </span>
-                  {selectedIncident.political_sentiment && (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-400 capitalize">
-                      {selectedIncident.political_sentiment.replace('_', ' ')}
-                    </span>
-                  )}
                 </div>
                 <h2 className="text-sm font-bold text-slate-100 leading-snug">
                   {selectedIncident.title}
@@ -678,6 +707,28 @@ ${isRulingActive
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
+                  {/* Sitting MLA Card Context */}
+                  {selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
+                    <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
+                          <UserCheck size={18} />
+                        </div>
+                        <div>
+                          <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Sitting MLA</div>
+                          <div className="text-xs font-bold text-slate-100">
+                            {getMlaDetails(selectedIncident.ac_number)?.mla_name}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700">
+                          {getMlaDetails(selectedIncident.ac_number)?.party}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
                       Incident Summary
@@ -698,29 +749,6 @@ ${isRulingActive
                       <span className="text-slate-500 block">District</span>
                       <span className="font-semibold text-slate-200">{selectedIncident.district}</span>
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-[11px]">
-                    {selectedIncident.strategic_tag && (
-                      <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
-                        <span className="text-slate-500 block">Strategic Tag</span>
-                        <span className="font-semibold text-indigo-300">{selectedIncident.strategic_tag}</span>
-                      </div>
-                    )}
-                    {selectedIncident.political_sentiment && (
-                      <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
-                        <span className="text-slate-500 block">Political Taxonomy</span>
-                        <span className={`font-semibold capitalize ${
-                          selectedIncident.political_sentiment === 'anti_incumbency' 
-                            ? 'text-rose-400' 
-                            : selectedIncident.political_sentiment === 'ruling_defense' 
-                              ? 'text-emerald-400' 
-                              : 'text-slate-300'
-                        }`}>
-                          {selectedIncident.political_sentiment.replace('_', ' ')}
-                        </span>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
