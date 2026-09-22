@@ -19,7 +19,12 @@ import {
   X, 
   ShieldCheck,
   Building2,
-  MessageCircle
+  MessageCircle,
+  Users,
+  Vote,
+  Clock,
+  TrendingUp,
+  BrainCircuit
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -49,7 +54,18 @@ interface PoliticalConfig {
   election_cycle: string;
 }
 
-// Controller for programmatic map zooming and panning
+interface ACElectoralStats {
+  ac_number: number;
+  constituency_name: string;
+  district: string;
+  total_voters: number;
+  male_voters: number;
+  female_voters: number;
+  total_booths: number;
+  urban_booths: number;
+  rural_booths: number;
+}
+
 function MapViewController({ 
   selectedCoord, 
   filterCoord 
@@ -76,7 +92,7 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
 
-  // Dynamic Political Config from DB
+  // Dynamic Political Config
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
     opposition_parties: ['DMK', 'AIADMK'],
@@ -91,10 +107,16 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
 
+  // Feature 3: Time-Series Spike Filter
+  const [timeFilter, setTimeFilter] = useState<'ALL' | '24H' | '7D' | '30D'>('ALL');
+
+  // Feature 1: Selected Constituency Demographic Stats
+  const [activeACStats, setActiveACStats] = useState<ACElectoralStats | null>(null);
+
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
+  const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
 
-  // Fetch active political config
   const fetchPoliticalConfig = async () => {
     try {
       const { data, error } = await supabase
@@ -111,13 +133,12 @@ export default function App() {
           opposition_parties: data.opposition_parties || ['DMK', 'AIADMK'],
           election_cycle: data.election_cycle || '2026'
         });
-        // Default lens setup
         if (data.opposition_parties && data.opposition_parties.length > 0) {
           setWarRoomLens(data.opposition_parties[0]);
         }
       }
     } catch (e) {
-      console.error('Error fetching political config:', e);
+      console.error('Error fetching config:', e);
     }
   };
 
@@ -143,6 +164,32 @@ export default function App() {
     fetchIncidents();
   }, []);
 
+  // Fetch Demographic Stats when Constituency changes
+  useEffect(() => {
+    if (selectedConstituency === 'All') {
+      setActiveACStats(null);
+      return;
+    }
+
+    const match = selectedConstituency.match(/^AC (\d+):/);
+    const acNo = match ? parseInt(match[1]) : null;
+
+    if (acNo) {
+      supabase
+        .from('ac_electoral_stats')
+        .select('*')
+        .eq('ac_number', acNo)
+        .eq('is_current', true)
+        .single()
+        .then(({ data }) => {
+          if (data) setActiveACStats(data);
+          else setActiveACStats(null);
+        });
+    } else {
+      setActiveACStats(null);
+    }
+  }, [selectedConstituency]);
+
   const isRulingActive = warRoomLens === politicalConfig.ruling_party;
 
   const districtList = useMemo(() => {
@@ -165,7 +212,10 @@ export default function App() {
     return ['All', ...acs.sort()];
   }, [incidents, selectedDistrict]);
 
+  // Synchronized Filter Logic with Time-Series Hotspot Filter
   const filteredIncidents = useMemo(() => {
+    const now = new Date('2026-09-22').getTime();
+
     return incidents.filter((inc) => {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
@@ -179,16 +229,24 @@ export default function App() {
         (inc.constituency && inc.constituency.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (inc.strategic_tag && inc.strategic_tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      return matchDistrict && matchConstituency && matchCategory && matchActionable && matchSearch;
+      let matchTime = true;
+      if (timeFilter !== 'ALL' && inc.incident_date) {
+        const incTime = new Date(inc.incident_date).getTime();
+        const diffDays = (now - incTime) / (1000 * 3600 * 24);
+        if (timeFilter === '24H') matchTime = diffDays <= 1;
+        else if (timeFilter === '7D') matchTime = diffDays <= 7;
+        else if (timeFilter === '30D') matchTime = diffDays <= 30;
+      }
+
+      return matchDistrict && matchConstituency && matchCategory && matchActionable && matchSearch && matchTime;
     });
-  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, actionableOnly, searchQuery]);
+  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, actionableOnly, searchQuery, timeFilter]);
 
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
     return ['All', ...list.sort()];
   }, [incidents]);
 
-  // Selected incident coords
   const selectedCoord = useMemo<[number, number] | null>(() => {
     if (selectedIncident && selectedIncident.latitude && selectedIncident.longitude) {
       return [selectedIncident.latitude, selectedIncident.longitude];
@@ -196,7 +254,6 @@ export default function App() {
     return null;
   }, [selectedIncident]);
 
-  // Feature 1: Dynamic Auto-Zoom on Filter changes (District/AC)
   const filterCoord = useMemo<[number, number] | null>(() => {
     if (selectedConstituency !== 'All') {
       const match = filteredIncidents.find((i) => {
@@ -220,7 +277,6 @@ export default function App() {
     setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  // Feature 3: One-Click WhatsApp Dispatch Formatter
   const handleWhatsAppShare = (incident: Incident, type: 'attack' | 'defense') => {
     const header = type === 'attack' 
       ? `🚨 *[FonsOS War-Room Alert - ${warRoomLens}]*` 
@@ -241,36 +297,44 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
-  const handleExportDossier = () => {
-    const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
-    const filterContext = selectedConstituency !== 'All' 
-      ? `Constituency Focus: ${selectedConstituency}` 
-      : (selectedDistrict !== 'All' ? `District Focus: ${selectedDistrict}` : 'Statewide TN Focus');
+  // Feature 2: Executive AI Briefing Synthesizer
+  const handleGenerateExecutiveBrief = () => {
+    setGeneratingBrief(true);
+    const actionable = filteredIncidents.filter((i) => i.is_actionable);
+    const scope = selectedConstituency !== 'All' 
+      ? selectedConstituency 
+      : (selectedDistrict !== 'All' ? `${selectedDistrict} District` : 'Tamil Nadu (Statewide)');
 
-    const textLines = [
-      `=============================================================`,
-      `FONS-OS INTELLIGENCE WAR-ROOM DOSSIER (${warRoomLens} LENS)`,
-      `Cycle: ${politicalConfig.election_cycle} | Scope: ${filterContext}`,
-      `Generated: ${new Date().toLocaleString('en-IN')}`,
-      `Actionable Flashpoints Recorded: ${actionableItems.length}`,
-      `=============================================================\n`,
-    ];
+    const topIssues = actionable.slice(0, 3).map((item, idx) => 
+      `${idx + 1}. [${item.category}] ${item.title} -> ${isRulingActive ? (item.defense_angle || 'Monitored') : (item.attack_angle || 'Public accountability')}`
+    ).join('\n');
 
-    actionableItems.forEach((item, idx) => {
-      const acTag = item.constituency ? `[AC ${item.ac_number || 'N/A'}: ${item.constituency}] ` : '';
-      textLines.push(`[${idx + 1}] ${acTag}${item.title}`);
-      textLines.push(`District: ${item.district} | Category: ${item.category} | Tag: ${item.strategic_tag || 'Ground Feed'}`);
-      if (isRulingActive) {
-        textLines.push(`${politicalConfig.ruling_party} Rebuttal/Defense: ${item.defense_angle || 'Monitoring field response'}`);
-      } else {
-        textLines.push(`${warRoomLens} Opposition Charge: ${item.attack_angle || 'Public accountability demanded'}`);
-      }
-      textLines.push(`Source: ${item.source_outlet} | Proof: ${item.proof_url}`);
-      textLines.push(`-------------------------------------------------------------\n`);
-    });
+    const demoContext = activeACStats 
+      ? `\nElectoral Footprint: ${activeACStats.total_voters.toLocaleString('en-IN')} voters across ${activeACStats.total_booths} polling booths (Urban: ${activeACStats.urban_booths}, Rural: ${activeACStats.rural_booths}).`
+      : '';
 
-    navigator.clipboard.writeText(textLines.join('\n'));
+    const brief = `=============================================================
+FONS-OS EXECUTIVE WAR-ROOM BRIEFING (${warRoomLens} LENS)
+Scope: ${scope} | Date: ${new Date().toLocaleDateString('en-IN')}
+${demoContext}
+Flashpoints In Scope: ${actionable.length} critical / governance issues
+=============================================================
+
+STRATEGIC POSTURE & VULNERABILITY SCORE:
+Status: ${actionable.length >= 3 ? 'HIGH EXPOSURE - IMMEDIATE FIELD RESPONSE REQUIRED' : 'MODERATE - STANDARD MEDIA MONITORING'}
+
+TOP STRATEGIC FLASHPOINTS:
+${topIssues || 'No high-severity actionable incidents recorded in current selection.'}
+
+RECOMMENDED CAMPAIGN DIRECTIVE:
+${isRulingActive 
+  ? `Deploy local ward observers to verify grievance redressal; emphasize administrative containment and refute speculative claims before opposition narrative solidifies.`
+  : `Issue localized constituency charge-sheet targeting infrastructure and administrative lapses; mobilize booth agents to raise awareness across impacted polling stations.`}
+=============================================================`;
+
+    navigator.clipboard.writeText(brief);
     setDossierCopied(true);
+    setGeneratingBrief(false);
     setTimeout(() => setDossierCopied(false), 2500);
   };
 
@@ -289,14 +353,31 @@ export default function App() {
                 {politicalConfig.election_cycle} ELECTORAL INTEL
               </span>
             </div>
-            <p className="text-xs text-slate-400">Public Governance, Rapid Rebuttal & Constituency Micro-Mapping</p>
+            <p className="text-xs text-slate-400">Voter Demographics, Rapid Rebuttal & Constituency Micro-Mapping</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Feature 2: Database-driven dynamic lenses */}
+          {/* Time-Series Filter */}
+          <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg p-0.5 text-xs">
+            {(['ALL', '24H', '7D', '30D'] as const).map((period) => (
+              <button
+                key={period}
+                onClick={() => setTimeFilter(period)}
+                className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+                  timeFilter === period 
+                    ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {period}
+              </button>
+            ))}
+          </div>
+
+          {/* Dynamic Lens Dropdown */}
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-slate-400 mr-2">Active Lens:</span>
+            <span className="text-slate-400 mr-2">Lens:</span>
             <select
               value={warRoomLens}
               onChange={(e) => setWarRoomLens(e.target.value)}
@@ -304,26 +385,28 @@ export default function App() {
             >
               <optgroup label="Ruling Lens" className="bg-slate-900 text-slate-400">
                 <option value={politicalConfig.ruling_party} className="bg-slate-900 text-amber-300">
-                  {politicalConfig.ruling_party} (Ruling - Defend/Counter)
+                  {politicalConfig.ruling_party} (Ruling)
                 </option>
               </optgroup>
               <optgroup label="Opposition Lenses" className="bg-slate-900 text-slate-400">
                 {politicalConfig.opposition_parties.map((party) => (
                   <option key={party} value={party} className="bg-slate-900 text-slate-100">
-                    {party} (Opposition - Attack/Expose)
+                    {party} (Opposition)
                   </option>
                 ))}
               </optgroup>
             </select>
           </div>
 
+          {/* AI Executive Briefing Button */}
           <button
-            onClick={handleExportDossier}
+            onClick={handleGenerateExecutiveBrief}
+            disabled={generatingBrief}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all cursor-pointer"
-            title="Export Actionable Dossier to Clipboard"
+            title="Generate Synthesized AI War-Room Briefing"
           >
-            {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <FileDown size={14} />}
-            <span>{dossierCopied ? 'Dossier Copied!' : 'Export Dossier'}</span>
+            {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <BrainCircuit size={14} />}
+            <span>{dossierCopied ? 'Briefing Copied!' : 'AI Executive Brief'}</span>
           </button>
 
           <button
@@ -337,7 +420,38 @@ export default function App() {
         </div>
       </header>
 
-      {/* War-Room Tactical Banner */}
+      {/* Feature 1: Live Demographic Ribbon when Constituency is selected */}
+      {activeACStats && (
+        <div className="bg-slate-900/90 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs backdrop-blur z-20">
+          <div className="flex items-center gap-4">
+            <span className="font-bold text-amber-300 flex items-center gap-1.5">
+              <Building2 size={14} />
+              AC {activeACStats.ac_number}: {activeACStats.constituency_name} ({activeACStats.district})
+            </span>
+            <div className="h-4 w-px bg-slate-700" />
+            <span className="flex items-center gap-1 text-slate-300">
+              <Users size={13} className="text-sky-400" />
+              <b>{activeACStats.total_voters.toLocaleString('en-IN')}</b> Total Electors
+              <span className="text-[10px] text-slate-500 font-mono">
+                ({activeACStats.male_voters.toLocaleString('en-IN')} M / {activeACStats.female_voters.toLocaleString('en-IN')} F)
+              </span>
+            </span>
+            <div className="h-4 w-px bg-slate-700" />
+            <span className="flex items-center gap-1 text-slate-300">
+              <Vote size={13} className="text-emerald-400" />
+              <b>{activeACStats.total_booths}</b> Polling Stations
+              <span className="text-[10px] text-slate-500 font-mono">
+                ({activeACStats.urban_booths} Urban | {activeACStats.rural_booths} Rural)
+              </span>
+            </span>
+          </div>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold uppercase">
+            Statutory SSR Active Roll
+          </span>
+        </div>
+      )}
+
+      {/* Tactical Banner */}
       <div
         className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
           isRulingActive
@@ -349,12 +463,12 @@ export default function App() {
           {isRulingActive ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
           <span>
             {isRulingActive
-              ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Remediation Defense`
-              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints, Direct Charges & Press Agenda`}
+              ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Field Remediation`
+              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Ground Charges`}
           </span>
         </div>
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
-          {filteredIncidents.length} Filtered Incidents
+          {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
         </span>
       </div>
 
@@ -374,7 +488,6 @@ export default function App() {
               />
             </div>
 
-            {/* Hierarchical Dropdowns: District -> Assembly Constituency */}
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={selectedDistrict}
@@ -423,7 +536,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Cards List with AC Badges */}
+          {/* Cards List */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1.5">
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
@@ -497,7 +610,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Interactive Leaflet Map with Auto-Zoom on Filter */}
+        {/* Center: Interactive Leaflet Map */}
         <div className="flex-1 h-full relative z-0">
           <MapContainer
             center={[11.1271, 78.6569]}
@@ -528,7 +641,7 @@ export default function App() {
                 <CircleMarker
                   key={incident.id}
                   center={[incident.latitude, incident.longitude]}
-                  radius={isSelected ? 10 : isActionable ? 8 : 5}
+                  radius={isSelected ? 11 : isActionable ? 8 : 5}
                   pathOptions={{
                     color: color,
                     fillColor: color,
@@ -561,7 +674,7 @@ export default function App() {
           </MapContainer>
         </div>
 
-        {/* Right Drawer: Intelligence Details, Copy, and One-Click WhatsApp Dispatch */}
+        {/* Right Drawer: Intelligence Details & Field Dispatch */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
