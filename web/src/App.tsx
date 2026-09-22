@@ -17,7 +17,8 @@ import {
   FileDown, 
   Check, 
   X, 
-  ShieldCheck 
+  ShieldCheck,
+  Building2
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -37,9 +38,10 @@ interface Incident {
   strategic_tag?: string;
   attack_angle?: string;
   defense_angle?: string;
+  constituency?: string | null;
+  ac_number?: number | null;
 }
 
-// Controller to smoothly pan & zoom map when an incident is selected
 function MapFlyToController({ selectedCoord }: { selectedCoord: [number, number] | null }) {
   const map = useMap();
   useEffect(() => {
@@ -56,16 +58,15 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
 
-  // War-room lens state
   const [warRoomLens, setWarRoomLens] = useState<'DMK' | 'TVK' | 'AIADMK'>('DMK');
 
-  // Filter states
+  // Hierarchical Filter states
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
+  const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
 
-  // Copy states
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
 
@@ -90,26 +91,48 @@ export default function App() {
     fetchIncidents();
   }, []);
 
-  // Filter Logic (District, Category, Actionable, Search Query)
+  // District List
+  const districtList = useMemo(() => {
+    const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
+    return ['All', ...list.sort()];
+  }, [incidents]);
+
+  // Hierarchical AC List based on Selected District
+  const constituencyList = useMemo(() => {
+    const relevant = selectedDistrict === 'All' 
+      ? incidents 
+      : incidents.filter((i) => i.district === selectedDistrict);
+    
+    const acs = Array.from(
+      new Set(
+        relevant
+          .filter((i) => i.constituency)
+          .map((i) => (i.ac_number ? `AC ${i.ac_number}: ${i.constituency}` : `${i.constituency}`))
+      )
+    );
+    return ['All', ...acs.sort()];
+  }, [incidents, selectedDistrict]);
+
+  // Synchronized Filter Logic (District -> AC -> Category -> Actionable -> Search)
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
+      
+      const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
+      const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
+      
       const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
       const matchActionable = !actionableOnly || inc.is_actionable;
       const matchSearch =
         searchQuery === '' ||
         inc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         inc.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (inc.constituency && inc.constituency.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (inc.strategic_tag && inc.strategic_tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
-      return matchDistrict && matchCategory && matchActionable && matchSearch;
+      return matchDistrict && matchConstituency && matchCategory && matchActionable && matchSearch;
     });
-  }, [incidents, selectedDistrict, selectedCategory, actionableOnly, searchQuery]);
-
-  const districtList = useMemo(() => {
-    const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
-    return ['All', ...list.sort()];
-  }, [incidents]);
+  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, actionableOnly, searchQuery]);
 
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
@@ -129,26 +152,32 @@ export default function App() {
     setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  // Dossier Export to Clipboard
+  // Dossier Export Engine with Constituency Micro-Mapping
   const handleExportDossier = () => {
     const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
+    const filterContext = selectedConstituency !== 'All' 
+      ? `Constituency Focus: ${selectedConstituency}` 
+      : (selectedDistrict !== 'All' ? `District Focus: ${selectedDistrict}` : 'Statewide TN Focus');
+
     const textLines = [
       `=============================================================`,
-      `FONS-OS STRATEGIC INTELLIGENCE DOSSIER (${warRoomLens} LENS)`,
+      `FONS-OS INTELLIGENCE WAR-ROOM DOSSIER (${warRoomLens} LENS)`,
+      `Scope: ${filterContext}`,
       `Generated: ${new Date().toLocaleString('en-IN')}`,
-      `Total Actionable Incidents: ${actionableItems.length}`,
+      `Actionable Flashpoints Recorded: ${actionableItems.length}`,
       `=============================================================\n`,
     ];
 
     actionableItems.forEach((item, idx) => {
-      textLines.push(`[${idx + 1}] ${item.title}`);
-      textLines.push(`District: ${item.district} | Category: ${item.category} | Classification: ${item.strategic_tag || 'Ground Feed'}`);
+      const acTag = item.constituency ? `[AC ${item.ac_number || 'N/A'}: ${item.constituency}] ` : '';
+      textLines.push(`[${idx + 1}] ${acTag}${item.title}`);
+      textLines.push(`District: ${item.district} | Category: ${item.category} | Tag: ${item.strategic_tag || 'Ground Feed'}`);
       if (warRoomLens === 'TVK') {
-        textLines.push(`TVK Defense/Rebuttal: ${item.defense_angle || 'Monitoring field administrative action'}`);
+        textLines.push(`TVK Rebuttal/Defense: ${item.defense_angle || 'Monitoring field response'}`);
       } else {
         textLines.push(`Opposition Charge: ${item.attack_angle || 'Public accountability demanded'}`);
       }
-      textLines.push(`Source Outlet: ${item.source_outlet} | Proof: ${item.proof_url}`);
+      textLines.push(`Source: ${item.source_outlet} | Proof: ${item.proof_url}`);
       textLines.push(`-------------------------------------------------------------\n`);
     });
 
@@ -169,14 +198,13 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-lg tracking-tight text-white">FonsOS</h1>
               <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                LIVE TN INTELLIGENCE
+                234 AC INTELLIGENCE
               </span>
             </div>
-            <p className="text-xs text-slate-400">Automated Public Governance, Grievance & Incident Dossier</p>
+            <p className="text-xs text-slate-400">Automated Public Governance, Grievance & Constituency Micro-Mapping</p>
           </div>
         </div>
 
-        {/* Action Controls & Dual Lens Selector */}
         <div className="flex items-center gap-3">
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
             <span className="text-slate-400 mr-2">War-Room Lens:</span>
@@ -211,7 +239,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* War-Room Lens Tactical Banner */}
+      {/* War-Room Tactical Banner */}
       <div
         className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
           warRoomLens === 'TVK'
@@ -223,12 +251,12 @@ export default function App() {
           {warRoomLens === 'TVK' ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
           <span>
             {warRoomLens === 'TVK'
-              ? 'TVK RULING LENS ACTIVE | Focus: Rapid Response, Damage Control & Countering Opposition Allegations'
-              : `${warRoomLens} OPPOSITION LENS ACTIVE | Focus: Anti-Incumbency Flashpoints, Charge Dossiers & Protest Agenda`}
+              ? 'TVK RULING LENS ACTIVE | Rapid Response, Damage Control & Grievance Remediation'
+              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Charge Dossiers`}
           </span>
         </div>
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
-          {filteredIncidents.length} Records Loaded
+          {filteredIncidents.length} Filtered Incidents
         </span>
       </div>
 
@@ -241,17 +269,21 @@ export default function App() {
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input
                 type="text"
-                placeholder="Search district, keywords, charges..."
+                placeholder="Search district, AC, charges, keywords..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 bg-slate-950/80 border border-slate-700 rounded-md text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
               />
             </div>
 
+            {/* Hierarchical Dropdowns: District -> Assembly Constituency */}
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={selectedDistrict}
-                onChange={(e) => setSelectedDistrict(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDistrict(e.target.value);
+                  setSelectedConstituency('All');
+                }}
                 className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
                 {districtList.map((d) => (
@@ -259,6 +291,18 @@ export default function App() {
                 ))}
               </select>
 
+              <select
+                value={selectedConstituency}
+                onChange={(e) => setSelectedConstituency(e.target.value)}
+                className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
+              >
+                {constituencyList.map((c) => (
+                  <option key={c} value={c} className="bg-slate-900">{c === 'All' ? 'All Constituencies' : c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 items-center">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -268,24 +312,20 @@ export default function App() {
                   <option key={c} value={c} className="bg-slate-900">{c === 'All' ? 'All Categories' : c}</option>
                 ))}
               </select>
-            </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
+              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer pl-1">
                 <input
                   type="checkbox"
                   checked={actionableOnly}
                   onChange={(e) => setActionableOnly(e.target.checked)}
                   className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer"
                 />
-                Show Actionable Issues Only
+                Actionable Only
               </label>
-              <span className="text-[10px] text-slate-500 font-mono">
-                {filteredIncidents.filter((i) => i.is_actionable).length} Actionable
-              </span>
             </div>
           </div>
 
+          {/* Cards List with AC Badges */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1.5">
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
@@ -306,9 +346,17 @@ export default function App() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
-                        {incident.category}
-                      </span>
+                      {/* AC Micro-Mapping Statutory Badge */}
+                      {incident.constituency ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-1">
+                          <Building2 size={11} />
+                          {incident.ac_number ? `AC ${incident.ac_number}: ` : ''}{incident.constituency}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
+                          {incident.category}
+                        </span>
+                      )}
 
                       {incident.strategic_tag && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
@@ -325,7 +373,7 @@ export default function App() {
                           }`}
                         >
                           <Sparkles size={10} />
-                          {warRoomLens === 'TVK' ? 'REBUTTAL TARGET' : 'CHARGE POINT'}
+                          {warRoomLens === 'TVK' ? 'REBUTTAL' : 'CHARGE'}
                         </span>
                       )}
                     </div>
@@ -398,11 +446,11 @@ export default function App() {
                     <div className="p-1 text-xs max-w-xs text-slate-900 font-sans">
                       <div className="font-bold mb-1">{incident.title}</div>
                       <div className="text-[10px] text-slate-600 mb-1">
-                        {incident.district} | {incident.category}
+                        {incident.constituency ? `AC: ${incident.constituency} | ` : ''}{incident.district}
                       </div>
                       {incident.strategic_tag && (
                         <div className="text-[10px] font-semibold text-indigo-600">
-                          Classification: {incident.strategic_tag}
+                          {incident.strategic_tag}
                         </div>
                       )}
                     </div>
@@ -413,21 +461,20 @@ export default function App() {
           </MapContainer>
         </div>
 
-        {/* Right Drawer: Intelligence Details & Angles */}
+        {/* Right Strategic Intelligence Drawer */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
-                    {selectedIncident.category}
-                  </span>
-                  {selectedIncident.is_actionable && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase flex items-center gap-1">
-                      <span>🎯</span>
-                      Actionable Issue
+                  {selectedIncident.constituency && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                      {selectedIncident.ac_number ? `AC ${selectedIncident.ac_number}: ` : ''}{selectedIncident.constituency}
                     </span>
                   )}
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
+                    {selectedIncident.category}
+                  </span>
                 </div>
                 <h2 className="text-sm font-bold text-slate-100 leading-snug">
                   {selectedIncident.title}
@@ -490,12 +537,14 @@ export default function App() {
 
                   <div className="grid grid-cols-2 gap-2 text-[11px]">
                     <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
-                      <span className="text-slate-500 block">District</span>
-                      <span className="font-semibold text-slate-200">{selectedIncident.district}</span>
+                      <span className="text-slate-500 block">Assembly Constituency</span>
+                      <span className="font-semibold text-amber-300">
+                        {selectedIncident.constituency ? `${selectedIncident.constituency} (AC ${selectedIncident.ac_number || 'N/A'})` : 'District Level'}
+                      </span>
                     </div>
                     <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
-                      <span className="text-slate-500 block">Source Outlet</span>
-                      <span className="font-semibold text-slate-200">{selectedIncident.source_outlet}</span>
+                      <span className="text-slate-500 block">District</span>
+                      <span className="font-semibold text-slate-200">{selectedIncident.district}</span>
                     </div>
                   </div>
 
@@ -516,19 +565,19 @@ export default function App() {
                     </span>
                     <p className="text-slate-200 font-medium leading-relaxed">
                       {selectedIncident.attack_angle ||
-                        `${selectedIncident.district}-ல் அரசு நிர்வாகத்தின் மெத்தனத்தால் மக்கள் பாதிக்கப்பட்டுள்ளனர். துறை அதிகாரிகள் உடனடி பதில் அளிக்க வேண்டும்.`}
+                        `${selectedIncident.constituency || selectedIncident.district}-ல் அரசு நிர்வாகத்தின் மெத்தனத்தால் மக்கள் பாதிக்கப்பட்டுள்ளனர். துறை அதிகாரிகள் உடனடி பதில் அளிக்க வேண்டும்.`}
                     </p>
                   </div>
 
                   <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-amber-400 uppercase">
-                        Ready-to-Post Charge Draft
+                        Constituency Charge Draft
                       </span>
                       <button
                         onClick={() =>
                           handleCopyText(
-                            `[FonsOS Alert - ${selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
+                            `[FonsOS AC Alert - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
                           )
                         }
                         className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
@@ -539,13 +588,8 @@ export default function App() {
                     </div>
 
                     <p className="text-slate-300 italic text-[11px] leading-relaxed">
-                      "{selectedIncident.district}-ல் நிகழ்ந்த இந்த சம்பவத்திற்கு ஆளும் அரசு என்ன நடவடிக்கை எடுத்துள்ளது? மக்கள் நலனில் மெத்தனப் போக்கு ஏன்?"
+                      "{selectedIncident.constituency || selectedIncident.district}-ல் நிகழ்ந்த இந்த சம்பவத்திற்கு ஆளும் அரசு என்ன நடவடிக்கை எடுத்துள்ளது? மக்கள் நலனில் மெத்தனப் போக்கு ஏன்?"
                     </p>
-                  </div>
-
-                  <div className="space-y-1 text-slate-400 text-[11px]">
-                    <div>• கள அளவில் மாவட்ட நிர்வாகத்திடம் விளக்கம் கோரும் மனு அளிக்கலாம்.</div>
-                    <div>• பத்திரிகையாளர் சந்திப்பில் இந்த ஆதாரத்தை ஆவணப்படுத்தி கேள்வி எழுப்பலாம்.</div>
                   </div>
                 </div>
               )}
@@ -554,7 +598,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
-                      Governance Counter & Defense (TVK War-Room)
+                      Governance Counter & Rebuttal (TVK Lens)
                     </span>
                     <p className="text-slate-200 font-medium leading-relaxed">
                       {selectedIncident.defense_angle ||
@@ -570,7 +614,7 @@ export default function App() {
                       <button
                         onClick={() =>
                           handleCopyText(
-                            `[TVK Governance Update - ${selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
+                            `[TVK Governance Update - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
                           )
                         }
                         className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
@@ -581,13 +625,8 @@ export default function App() {
                     </div>
 
                     <p className="text-slate-300 italic text-[11px] leading-relaxed">
-                      "இச்சம்பவம் தொடர்பாக அரசு உரிய துறைகள் மூலம் உடனடி நிவாரண நடவடிக்கைகளை மேற்கொண்டுள்ளது. தவறான தகவல்களை நம்ப வேண்டாம்."
+                      "இச்சம்பவம் தொடர்பாக உரிய துறைகள் மூலம் உடனடி நடவடிக்கைகள் எடுக்கப்பட்டுள்ளன. தவறான தகவல்களைப் பரப்ப வேண்டாம்."
                     </p>
-                  </div>
-
-                  <div className="space-y-1 text-slate-400 text-[11px]">
-                    <div>• கள அலுவலர்கள் மூலம் தீர்வு அறிக்கையைத் தயார் செய்து சமர்ப்பிக்கவும்.</div>
-                    <div>• வதந்திகளுக்கு முற்றுப்புள்ளி வைக்கும் அதிகாரப்பூர்வ உண்மை அறிக்கையைப் பகிரவும்.</div>
                   </div>
                 </div>
               )}
