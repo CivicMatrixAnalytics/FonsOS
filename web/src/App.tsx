@@ -25,7 +25,6 @@ import {
   UserCheck
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
-import mlaData from './data/tn_mla_registry.json';
 
 interface Incident {
   id: string;
@@ -54,7 +53,10 @@ interface PoliticalConfig {
   election_cycle: string;
 }
 
-const MLA_REGISTRY: Record<string, { mla_name: string; party: string }> = mlaData as any;
+interface MlaInfo {
+  mla_name: string;
+  party: string;
+}
 
 function MapViewController({ 
   selectedCoord, 
@@ -78,6 +80,7 @@ function MapViewController({
 
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [mlaRegistry, setMlaRegistry] = useState<Record<string, MlaInfo>>({});
   const [loading, setLoading] = useState(true);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
@@ -99,6 +102,30 @@ export default function App() {
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
+
+  // Dynamic MLA Fetch from Supabase (Zero Hardcoding)
+  const fetchMlaRegistry = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('assembly_constituencies')
+        .select('ac_number, sitting_mla, party');
+
+      if (!error && data) {
+        const mapping: Record<string, MlaInfo> = {};
+        data.forEach((row) => {
+          if (row.sitting_mla) {
+            mapping[String(row.ac_number)] = {
+              mla_name: row.sitting_mla,
+              party: row.party || 'IND'
+            };
+          }
+        });
+        setMlaRegistry(mapping);
+      }
+    } catch (e) {
+      console.error('Error fetching dynamic MLA registry:', e);
+    }
+  };
 
   const fetchPoliticalConfig = async () => {
     try {
@@ -144,6 +171,7 @@ export default function App() {
 
   useEffect(() => {
     fetchPoliticalConfig();
+    fetchMlaRegistry();
     fetchIncidents();
   }, []);
 
@@ -151,7 +179,7 @@ export default function App() {
 
   const getMlaDetails = (ac_number?: number | null) => {
     if (!ac_number) return null;
-    return MLA_REGISTRY[String(ac_number)] || null;
+    return mlaRegistry[String(ac_number)] || null;
   };
 
   const districtList = useMemo(() => {
@@ -367,7 +395,10 @@ ${isRulingActive
           </button>
 
           <button
-            onClick={fetchIncidents}
+            onClick={() => {
+              fetchIncidents();
+              fetchMlaRegistry();
+            }}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 transition-all cursor-pointer"
           >
@@ -496,7 +527,7 @@ ${isRulingActive
                         </span>
                       )}
 
-                      {/* Tactical MLA Strategic Alert Badge */}
+                      {/* Tactical MLA Alert Badges */}
                       {mla && !isRulingActive && isRulingMla && (
                         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1">
                           <Target size={10} />
@@ -707,7 +738,7 @@ ${isRulingActive
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
-                  {/* Sitting MLA Card Context */}
+                  {/* Dynamic MLA Box */}
                   {selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
