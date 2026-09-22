@@ -14,7 +14,6 @@ import {
   ExternalLink, 
   Sparkles, 
   Share2, 
-  FileDown, 
   Check, 
   X, 
   ShieldCheck,
@@ -22,8 +21,6 @@ import {
   MessageCircle,
   Users,
   Vote,
-  Clock,
-  TrendingUp,
   BrainCircuit
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
@@ -107,10 +104,10 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
 
-  // Feature 3: Time-Series Spike Filter
+  // Time-Series Spike Filter
   const [timeFilter, setTimeFilter] = useState<'ALL' | '24H' | '7D' | '30D'>('ALL');
 
-  // Feature 1: Selected Constituency Demographic Stats
+  // Selected Constituency Demographic Stats
   const [activeACStats, setActiveACStats] = useState<ACElectoralStats | null>(null);
 
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
@@ -297,7 +294,6 @@ export default function App() {
     window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
-  // Feature 2: Executive AI Briefing Synthesizer
   const handleGenerateExecutiveBrief = () => {
     setGeneratingBrief(true);
     const actionable = filteredIncidents.filter((i) => i.is_actionable);
@@ -420,7 +416,7 @@ ${isRulingActive
         </div>
       </header>
 
-      {/* Feature 1: Live Demographic Ribbon when Constituency is selected */}
+      {/* Feature: Live Demographic Ribbon when Constituency is selected */}
       {activeACStats && (
         <div className="bg-slate-900/90 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs backdrop-blur z-20">
           <div className="flex items-center gap-4">
