@@ -25,6 +25,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
+import { StateTallyBar } from './components/StateTallyBar';
 
 interface Incident {
   id: string;
@@ -62,8 +63,8 @@ function MapViewController({
   selectedCoord, 
   filterCoord 
 }: { 
-  selectedCoord: [number, number] | null;
-  filterCoord: [number, number] | null;
+  selectedCoord: [number, number] | null; 
+  filterCoord: [number, number] | null; 
 }) {
   const map = useMap();
 
@@ -95,6 +96,7 @@ export default function App() {
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedPartyFilter, setSelectedPartyFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
   const [timeFilter, setTimeFilter] = useState<'ALL' | '24H' | '7D' | '30D'>('ALL');
@@ -206,6 +208,13 @@ export default function App() {
     const now = new Date('2026-09-22').getTime();
 
     return incidents.filter((inc) => {
+      const mla = getMlaDetails(inc.ac_number);
+
+      // Party filter hook from StateTallyBar
+      if (selectedPartyFilter && (!mla || mla.party !== selectedPartyFilter)) {
+        return false;
+      }
+
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
       const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
@@ -229,7 +238,7 @@ export default function App() {
 
       return matchDistrict && matchConstituency && matchCategory && matchActionable && matchSearch && matchTime;
     });
-  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, actionableOnly, searchQuery, timeFilter]);
+  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
 
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
@@ -429,6 +438,12 @@ ${isRulingActive
         </span>
       </div>
 
+      {/* Dynamic 234 Assembly Seat Share Tally Bar */}
+      <StateTallyBar
+        selectedParty={selectedPartyFilter}
+        onSelectParty={(party) => setSelectedPartyFilter(party)}
+      />
+
       {/* Main Workspace */}
       <div className="flex flex-1 relative overflow-hidden">
         {/* Left Side: Filterable Feed */}
@@ -542,7 +557,6 @@ ${isRulingActive
                         </span>
                       )}
 
-                      {/* Lens-Aware Dynamic Sentiment Badges */}
                       {incident.political_sentiment === 'anti_incumbency' && (
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
                           isRulingActive
@@ -738,7 +752,6 @@ ${isRulingActive
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
-                  {/* Dynamic MLA Box */}
                   {selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
