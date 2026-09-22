@@ -18,7 +18,8 @@ import {
   Check, 
   X, 
   ShieldCheck,
-  Building2
+  Building2,
+  MessageCircle
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -42,13 +43,30 @@ interface Incident {
   ac_number?: number | null;
 }
 
-function MapFlyToController({ selectedCoord }: { selectedCoord: [number, number] | null }) {
+interface PoliticalConfig {
+  ruling_party: string;
+  opposition_parties: string[];
+  election_cycle: string;
+}
+
+// Controller for programmatic map zooming and panning
+function MapViewController({ 
+  selectedCoord, 
+  filterCoord 
+}: { 
+  selectedCoord: [number, number] | null;
+  filterCoord: [number, number] | null;
+}) {
   const map = useMap();
+
   useEffect(() => {
     if (selectedCoord) {
       map.flyTo(selectedCoord, 12, { duration: 1.2 });
+    } else if (filterCoord) {
+      map.flyTo(filterCoord, 10, { duration: 1.2 });
     }
-  }, [selectedCoord, map]);
+  }, [selectedCoord, filterCoord, map]);
+
   return null;
 }
 
@@ -58,7 +76,13 @@ export default function App() {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
 
-  const [warRoomLens, setWarRoomLens] = useState<'DMK' | 'TVK' | 'AIADMK'>('DMK');
+  // Dynamic Political Config from DB
+  const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
+    ruling_party: 'TVK',
+    opposition_parties: ['DMK', 'AIADMK'],
+    election_cycle: '2026'
+  });
+  const [warRoomLens, setWarRoomLens] = useState<string>('DMK');
 
   // Hierarchical Filter states
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
@@ -69,6 +93,33 @@ export default function App() {
 
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
+
+  // Fetch active political config
+  const fetchPoliticalConfig = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('political_config')
+        .select('ruling_party, opposition_parties, election_cycle')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!error && data) {
+        setPoliticalConfig({
+          ruling_party: data.ruling_party || 'TVK',
+          opposition_parties: data.opposition_parties || ['DMK', 'AIADMK'],
+          election_cycle: data.election_cycle || '2026'
+        });
+        // Default lens setup
+        if (data.opposition_parties && data.opposition_parties.length > 0) {
+          setWarRoomLens(data.opposition_parties[0]);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching political config:', e);
+    }
+  };
 
   const fetchIncidents = async () => {
     setLoading(true);
@@ -88,16 +139,17 @@ export default function App() {
   };
 
   useEffect(() => {
+    fetchPoliticalConfig();
     fetchIncidents();
   }, []);
 
-  // District List
+  const isRulingActive = warRoomLens === politicalConfig.ruling_party;
+
   const districtList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.district).filter(Boolean)));
     return ['All', ...list.sort()];
   }, [incidents]);
 
-  // Hierarchical AC List based on Selected District
   const constituencyList = useMemo(() => {
     const relevant = selectedDistrict === 'All' 
       ? incidents 
@@ -113,14 +165,11 @@ export default function App() {
     return ['All', ...acs.sort()];
   }, [incidents, selectedDistrict]);
 
-  // Synchronized Filter Logic (District -> AC -> Category -> Actionable -> Search)
   const filteredIncidents = useMemo(() => {
     return incidents.filter((inc) => {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
-      
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
       const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
-      
       const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
       const matchActionable = !actionableOnly || inc.is_actionable;
       const matchSearch =
@@ -139,6 +188,7 @@ export default function App() {
     return ['All', ...list.sort()];
   }, [incidents]);
 
+  // Selected incident coords
   const selectedCoord = useMemo<[number, number] | null>(() => {
     if (selectedIncident && selectedIncident.latitude && selectedIncident.longitude) {
       return [selectedIncident.latitude, selectedIncident.longitude];
@@ -146,13 +196,51 @@ export default function App() {
     return null;
   }, [selectedIncident]);
 
+  // Feature 1: Dynamic Auto-Zoom on Filter changes (District/AC)
+  const filterCoord = useMemo<[number, number] | null>(() => {
+    if (selectedConstituency !== 'All') {
+      const match = filteredIncidents.find((i) => {
+        const acLabel = i.ac_number ? `AC ${i.ac_number}: ${i.constituency}` : `${i.constituency}`;
+        return acLabel === selectedConstituency;
+      });
+      if (match && match.latitude && match.longitude) return [match.latitude, match.longitude];
+    }
+
+    if (selectedDistrict !== 'All') {
+      const match = filteredIncidents.find((i) => i.district === selectedDistrict && i.latitude && i.longitude);
+      if (match) return [match.latitude, match.longitude];
+    }
+
+    return null;
+  }, [selectedDistrict, selectedConstituency, filteredIncidents]);
+
   const handleCopyText = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedDraft(true);
     setTimeout(() => setCopiedDraft(false), 2000);
   };
 
-  // Dossier Export Engine with Constituency Micro-Mapping
+  // Feature 3: One-Click WhatsApp Dispatch Formatter
+  const handleWhatsAppShare = (incident: Incident, type: 'attack' | 'defense') => {
+    const header = type === 'attack' 
+      ? `🚨 *[FonsOS War-Room Alert - ${warRoomLens}]*` 
+      : `🛡️ *[${politicalConfig.ruling_party} Governance Counter & Fact-Check]*`;
+
+    const acInfo = incident.constituency 
+      ? `\n📍 *Constituency:* AC ${incident.ac_number || ''} ${incident.constituency} (${incident.district})`
+      : `\n📍 *District:* ${incident.district}`;
+
+    const content = type === 'attack'
+      ? `\n\n*குற்றச்சாட்டு:*\n${incident.attack_angle || incident.summary}`
+      : `\n\n*விளக்கம் / தீர்வு:*\n${incident.defense_angle || incident.summary}`;
+
+    const proof = `\n\n🔗 *ஆதாரம்:* ${incident.proof_url}`;
+    const fullMessage = `${header}${acInfo}\n*தலைப்பு:* ${incident.title}${content}${proof}`;
+
+    const encoded = encodeURIComponent(fullMessage);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
   const handleExportDossier = () => {
     const actionableItems = filteredIncidents.filter((i) => i.is_actionable);
     const filterContext = selectedConstituency !== 'All' 
@@ -162,7 +250,7 @@ export default function App() {
     const textLines = [
       `=============================================================`,
       `FONS-OS INTELLIGENCE WAR-ROOM DOSSIER (${warRoomLens} LENS)`,
-      `Scope: ${filterContext}`,
+      `Cycle: ${politicalConfig.election_cycle} | Scope: ${filterContext}`,
       `Generated: ${new Date().toLocaleString('en-IN')}`,
       `Actionable Flashpoints Recorded: ${actionableItems.length}`,
       `=============================================================\n`,
@@ -172,10 +260,10 @@ export default function App() {
       const acTag = item.constituency ? `[AC ${item.ac_number || 'N/A'}: ${item.constituency}] ` : '';
       textLines.push(`[${idx + 1}] ${acTag}${item.title}`);
       textLines.push(`District: ${item.district} | Category: ${item.category} | Tag: ${item.strategic_tag || 'Ground Feed'}`);
-      if (warRoomLens === 'TVK') {
-        textLines.push(`TVK Rebuttal/Defense: ${item.defense_angle || 'Monitoring field response'}`);
+      if (isRulingActive) {
+        textLines.push(`${politicalConfig.ruling_party} Rebuttal/Defense: ${item.defense_angle || 'Monitoring field response'}`);
       } else {
-        textLines.push(`Opposition Charge: ${item.attack_angle || 'Public accountability demanded'}`);
+        textLines.push(`${warRoomLens} Opposition Charge: ${item.attack_angle || 'Public accountability demanded'}`);
       }
       textLines.push(`Source: ${item.source_outlet} | Proof: ${item.proof_url}`);
       textLines.push(`-------------------------------------------------------------\n`);
@@ -198,24 +286,34 @@ export default function App() {
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-lg tracking-tight text-white">FonsOS</h1>
               <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                234 AC INTELLIGENCE
+                {politicalConfig.election_cycle} ELECTORAL INTEL
               </span>
             </div>
-            <p className="text-xs text-slate-400">Automated Public Governance, Grievance & Constituency Micro-Mapping</p>
+            <p className="text-xs text-slate-400">Public Governance, Rapid Rebuttal & Constituency Micro-Mapping</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Feature 2: Database-driven dynamic lenses */}
           <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-slate-400 mr-2">War-Room Lens:</span>
+            <span className="text-slate-400 mr-2">Active Lens:</span>
             <select
               value={warRoomLens}
-              onChange={(e) => setWarRoomLens(e.target.value as 'DMK' | 'TVK' | 'AIADMK')}
+              onChange={(e) => setWarRoomLens(e.target.value)}
               className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer"
             >
-              <option value="DMK" className="bg-slate-900 text-slate-100">DMK (Opposition - Attack/Expose)</option>
-              <option value="AIADMK" className="bg-slate-900 text-slate-100">AIADMK (Opposition - Attack/Expose)</option>
-              <option value="TVK" className="bg-slate-900 text-slate-100">TVK (Ruling - Defend/Delivery)</option>
+              <optgroup label="Ruling Lens" className="bg-slate-900 text-slate-400">
+                <option value={politicalConfig.ruling_party} className="bg-slate-900 text-amber-300">
+                  {politicalConfig.ruling_party} (Ruling - Defend/Counter)
+                </option>
+              </optgroup>
+              <optgroup label="Opposition Lenses" className="bg-slate-900 text-slate-400">
+                {politicalConfig.opposition_parties.map((party) => (
+                  <option key={party} value={party} className="bg-slate-900 text-slate-100">
+                    {party} (Opposition - Attack/Expose)
+                  </option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -242,17 +340,17 @@ export default function App() {
       {/* War-Room Tactical Banner */}
       <div
         className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
-          warRoomLens === 'TVK'
+          isRulingActive
             ? 'bg-amber-950/40 border-amber-800/50 text-amber-300'
             : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
         }`}
       >
         <div className="flex items-center gap-2">
-          {warRoomLens === 'TVK' ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
+          {isRulingActive ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
           <span>
-            {warRoomLens === 'TVK'
-              ? 'TVK RULING LENS ACTIVE | Rapid Response, Damage Control & Grievance Remediation'
-              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Charge Dossiers`}
+            {isRulingActive
+              ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Remediation Defense`
+              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints, Direct Charges & Press Agenda`}
           </span>
         </div>
         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
@@ -336,7 +434,7 @@ export default function App() {
                   key={incident.id}
                   onClick={() => {
                     setSelectedIncident(incident);
-                    setActiveTab(isActionable ? (warRoomLens === 'TVK' ? 'defense' : 'attack') : 'details');
+                    setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
                   }}
                   className={`p-3 rounded-lg cursor-pointer transition-all border ${
                     isSelected
@@ -346,7 +444,6 @@ export default function App() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {/* AC Micro-Mapping Statutory Badge */}
                       {incident.constituency ? (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-1">
                           <Building2 size={11} />
@@ -367,13 +464,13 @@ export default function App() {
                       {isActionable && (
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
-                            warRoomLens === 'TVK'
+                            isRulingActive
                               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                               : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
                           }`}
                         >
                           <Sparkles size={10} />
-                          {warRoomLens === 'TVK' ? 'REBUTTAL' : 'CHARGE'}
+                          {isRulingActive ? 'REBUTTAL' : 'CHARGE'}
                         </span>
                       )}
                     </div>
@@ -400,7 +497,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Interactive Leaflet Map */}
+        {/* Center: Interactive Leaflet Map with Auto-Zoom on Filter */}
         <div className="flex-1 h-full relative z-0">
           <MapContainer
             center={[11.1271, 78.6569]}
@@ -413,13 +510,16 @@ export default function App() {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            <MapFlyToController selectedCoord={selectedCoord} />
+            <MapViewController 
+              selectedCoord={selectedCoord} 
+              filterCoord={filterCoord} 
+            />
 
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
               const color = isActionable
-                ? warRoomLens === 'TVK'
+                ? isRulingActive
                   ? '#f59e0b'
                   : '#ef4444'
                 : '#10b981';
@@ -438,7 +538,7 @@ export default function App() {
                   eventHandlers={{
                     click: () => {
                       setSelectedIncident(incident);
-                      setActiveTab(isActionable ? (warRoomLens === 'TVK' ? 'defense' : 'attack') : 'details');
+                      setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
                     },
                   }}
                 >
@@ -461,7 +561,7 @@ export default function App() {
           </MapContainer>
         </div>
 
-        {/* Right Strategic Intelligence Drawer */}
+        {/* Right Drawer: Intelligence Details, Copy, and One-Click WhatsApp Dispatch */}
         {selectedIncident && (
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
@@ -572,19 +672,29 @@ export default function App() {
                   <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-amber-400 uppercase">
-                        Constituency Charge Draft
+                        Actionable Ground Draft
                       </span>
-                      <button
-                        onClick={() =>
-                          handleCopyText(
-                            `[FonsOS AC Alert - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
-                          )
-                        }
-                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
-                      >
-                        {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
-                        <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleWhatsAppShare(selectedIncident, 'attack')}
+                          className="flex items-center gap-1 text-[11px] text-emerald-300 hover:text-emerald-200 bg-emerald-950/80 border border-emerald-700/60 px-2 py-1 rounded cursor-pointer transition-all"
+                          title="Share to WhatsApp"
+                        >
+                          <MessageCircle size={12} />
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleCopyText(
+                              `[FonsOS AC Alert - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nகுற்றச்சாட்டு:\n${selectedIncident.attack_angle || selectedIncident.summary}\n\nஆதாரம்: ${selectedIncident.proof_url}`
+                            )
+                          }
+                          className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
+                        >
+                          {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+                          <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     <p className="text-slate-300 italic text-[11px] leading-relaxed">
@@ -598,7 +708,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
-                      Governance Counter & Rebuttal (TVK Lens)
+                      Governance Counter & Rebuttal ({politicalConfig.ruling_party} Lens)
                     </span>
                     <p className="text-slate-200 font-medium leading-relaxed">
                       {selectedIncident.defense_angle ||
@@ -609,19 +719,29 @@ export default function App() {
                   <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-emerald-400 uppercase">
-                        Rebuttal Fact-Check Draft
+                        Fact-Check Counter Copy
                       </span>
-                      <button
-                        onClick={() =>
-                          handleCopyText(
-                            `[TVK Governance Update - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
-                          )
-                        }
-                        className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
-                      >
-                        {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
-                        <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleWhatsAppShare(selectedIncident, 'defense')}
+                          className="flex items-center gap-1 text-[11px] text-emerald-300 hover:text-emerald-200 bg-emerald-950/80 border border-emerald-700/60 px-2 py-1 rounded cursor-pointer transition-all"
+                          title="Share to WhatsApp"
+                        >
+                          <MessageCircle size={12} />
+                          <span>WhatsApp</span>
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleCopyText(
+                              `[${politicalConfig.ruling_party} Governance Update - ${selectedIncident.constituency || selectedIncident.district}]\n${selectedIncident.title}\n\nவிளக்கம்:\n${selectedIncident.defense_angle || selectedIncident.summary}\n\nஉண்மை அறிக்கை: ${selectedIncident.proof_url}`
+                            )
+                          }
+                          className="flex items-center gap-1 text-[11px] text-slate-300 hover:text-white bg-slate-800 px-2 py-1 rounded cursor-pointer"
+                        >
+                          {copiedDraft ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+                          <span>{copiedDraft ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     <p className="text-slate-300 italic text-[11px] leading-relaxed">
