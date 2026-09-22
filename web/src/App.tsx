@@ -41,6 +41,7 @@ interface Incident {
   defense_angle?: string;
   constituency?: string | null;
   ac_number?: number | null;
+  political_sentiment?: 'anti_incumbency' | 'ruling_defense' | 'neutral';
 }
 
 interface PoliticalConfig {
@@ -484,6 +485,23 @@ ${isRulingActive
                         </span>
                       )}
 
+                      {/* Strategic Sentiment Taxonomy Badge */}
+                      {incident.political_sentiment === 'anti_incumbency' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                          ⚡ Anti-Incumbency
+                        </span>
+                      )}
+                      {incident.political_sentiment === 'ruling_defense' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                          🛡️ Ruling Defense
+                        </span>
+                      )}
+                      {incident.political_sentiment === 'neutral' && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                          🏛️ Civic Neutral
+                        </span>
+                      )}
+
                       {incident.strategic_tag && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-slate-400">
                           {incident.strategic_tag}
@@ -604,6 +622,11 @@ ${isRulingActive
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                     {selectedIncident.category}
                   </span>
+                  {selectedIncident.political_sentiment && (
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700 text-slate-400 capitalize">
+                      {selectedIncident.political_sentiment.replace('_', ' ')}
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-sm font-bold text-slate-100 leading-snug">
                   {selectedIncident.title}
@@ -677,12 +700,28 @@ ${isRulingActive
                     </div>
                   </div>
 
-                  {selectedIncident.strategic_tag && (
-                    <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
-                      <span className="text-slate-500 block text-[11px]">Strategic Classification</span>
-                      <span className="font-semibold text-indigo-300">{selectedIncident.strategic_tag}</span>
-                    </div>
-                  )}
+                  <div className="grid grid-cols-2 gap-2 text-[11px]">
+                    {selectedIncident.strategic_tag && (
+                      <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
+                        <span className="text-slate-500 block">Strategic Tag</span>
+                        <span className="font-semibold text-indigo-300">{selectedIncident.strategic_tag}</span>
+                      </div>
+                    )}
+                    {selectedIncident.political_sentiment && (
+                      <div className="bg-slate-950/40 p-2.5 rounded border border-slate-800">
+                        <span className="text-slate-500 block">Political Taxonomy</span>
+                        <span className={`font-semibold capitalize ${
+                          selectedIncident.political_sentiment === 'anti_incumbency' 
+                            ? 'text-rose-400' 
+                            : selectedIncident.political_sentiment === 'ruling_defense' 
+                              ? 'text-emerald-400' 
+                              : 'text-slate-300'
+                        }`}>
+                          {selectedIncident.political_sentiment.replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
