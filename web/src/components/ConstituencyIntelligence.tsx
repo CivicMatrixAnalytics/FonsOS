@@ -1,11 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize client (reads from NEXT_PUBLIC_ or generic ENV)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+import { supabase } from '../supabaseClient';
 
 export interface ConstituencyRecord {
   ac_number: number;
