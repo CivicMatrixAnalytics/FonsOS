@@ -19,8 +19,6 @@ import {
   ShieldCheck,
   Building2,
   MessageCircle,
-  Users,
-  Vote,
   BrainCircuit
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
@@ -49,18 +47,6 @@ interface PoliticalConfig {
   ruling_party: string;
   opposition_parties: string[];
   election_cycle: string;
-}
-
-interface ACElectoralStats {
-  ac_number: number;
-  constituency_name: string;
-  district: string;
-  total_voters: number;
-  male_voters: number;
-  female_voters: number;
-  total_booths: number;
-  urban_booths: number;
-  rural_booths: number;
 }
 
 function MapViewController({ 
@@ -106,9 +92,6 @@ export default function App() {
 
   // Time-Series Spike Filter
   const [timeFilter, setTimeFilter] = useState<'ALL' | '24H' | '7D' | '30D'>('ALL');
-
-  // Selected Constituency Demographic Stats
-  const [activeACStats, setActiveACStats] = useState<ACElectoralStats | null>(null);
 
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
@@ -161,32 +144,6 @@ export default function App() {
     fetchIncidents();
   }, []);
 
-  // Fetch Demographic Stats when Constituency changes
-  useEffect(() => {
-    if (selectedConstituency === 'All') {
-      setActiveACStats(null);
-      return;
-    }
-
-    const match = selectedConstituency.match(/^AC (\d+):/);
-    const acNo = match ? parseInt(match[1]) : null;
-
-    if (acNo) {
-      supabase
-        .from('ac_electoral_stats')
-        .select('*')
-        .eq('ac_number', acNo)
-        .eq('is_current', true)
-        .single()
-        .then(({ data }) => {
-          if (data) setActiveACStats(data);
-          else setActiveACStats(null);
-        });
-    } else {
-      setActiveACStats(null);
-    }
-  }, [selectedConstituency]);
-
   const isRulingActive = warRoomLens === politicalConfig.ruling_party;
 
   const districtList = useMemo(() => {
@@ -209,7 +166,6 @@ export default function App() {
     return ['All', ...acs.sort()];
   }, [incidents, selectedDistrict]);
 
-  // Synchronized Filter Logic with Time-Series Hotspot Filter
   const filteredIncidents = useMemo(() => {
     const now = new Date('2026-09-22').getTime();
 
@@ -305,14 +261,9 @@ export default function App() {
       `${idx + 1}. [${item.category}] ${item.title} -> ${isRulingActive ? (item.defense_angle || 'Monitored') : (item.attack_angle || 'Public accountability')}`
     ).join('\n');
 
-    const demoContext = activeACStats 
-      ? `\nElectoral Footprint: ${activeACStats.total_voters.toLocaleString('en-IN')} voters across ${activeACStats.total_booths} polling booths (Urban: ${activeACStats.urban_booths}, Rural: ${activeACStats.rural_booths}).`
-      : '';
-
     const brief = `=============================================================
 FONS-OS EXECUTIVE WAR-ROOM BRIEFING (${warRoomLens} LENS)
 Scope: ${scope} | Date: ${new Date().toLocaleDateString('en-IN')}
-${demoContext}
 Flashpoints In Scope: ${actionable.length} critical / governance issues
 =============================================================
 
@@ -349,7 +300,7 @@ ${isRulingActive
                 {politicalConfig.election_cycle} ELECTORAL INTEL
               </span>
             </div>
-            <p className="text-xs text-slate-400">Voter Demographics, Rapid Rebuttal & Constituency Micro-Mapping</p>
+            <p className="text-xs text-slate-400">Incident Intelligence, Rapid Rebuttal & Constituency Micro-Mapping</p>
           </div>
         </div>
 
@@ -415,37 +366,6 @@ ${isRulingActive
           </button>
         </div>
       </header>
-
-      {/* Feature: Live Demographic Ribbon when Constituency is selected */}
-      {activeACStats && (
-        <div className="bg-slate-900/90 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs backdrop-blur z-20">
-          <div className="flex items-center gap-4">
-            <span className="font-bold text-amber-300 flex items-center gap-1.5">
-              <Building2 size={14} />
-              AC {activeACStats.ac_number}: {activeACStats.constituency_name} ({activeACStats.district})
-            </span>
-            <div className="h-4 w-px bg-slate-700" />
-            <span className="flex items-center gap-1 text-slate-300">
-              <Users size={13} className="text-sky-400" />
-              <b>{activeACStats.total_voters.toLocaleString('en-IN')}</b> Total Electors
-              <span className="text-[10px] text-slate-500 font-mono">
-                ({activeACStats.male_voters.toLocaleString('en-IN')} M / {activeACStats.female_voters.toLocaleString('en-IN')} F)
-              </span>
-            </span>
-            <div className="h-4 w-px bg-slate-700" />
-            <span className="flex items-center gap-1 text-slate-300">
-              <Vote size={13} className="text-emerald-400" />
-              <b>{activeACStats.total_booths}</b> Polling Stations
-              <span className="text-[10px] text-slate-500 font-mono">
-                ({activeACStats.urban_booths} Urban | {activeACStats.rural_booths} Rural)
-              </span>
-            </span>
-          </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold uppercase">
-            Statutory SSR Active Roll
-          </span>
-        </div>
-      )}
 
       {/* Tactical Banner */}
       <div
