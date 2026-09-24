@@ -105,7 +105,7 @@ export default function App() {
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
 
-  // Dynamic MLA Fetch from Supabase (Zero Hardcoding)
+  // Dynamic MLA Fetch from Supabase
   const fetchMlaRegistry = async () => {
     try {
       const { data, error } = await supabase
@@ -752,6 +752,7 @@ ${isRulingActive
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
+                  {/* Dynamic MLA Box */}
                   {selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
@@ -772,6 +773,71 @@ ${isRulingActive
                       </div>
                     </div>
                   )}
+
+                  {/* 100% INLINE ANTI-INCUMBENCY VULNERABILITY METER */}
+                  {(() => {
+                    const acIncidents = filteredIncidents.filter(
+                      (i) =>
+                        (selectedIncident.ac_number && Number(i.ac_number) === Number(selectedIncident.ac_number)) ||
+                        (selectedIncident.constituency && i.constituency === selectedIncident.constituency)
+                    );
+                    const count = acIncidents.length > 0 ? acIncidents.length : 1;
+                    const highCount = acIncidents.filter((i) => i.severity === 'High').length;
+                    const actionableCount = acIncidents.filter((i) => i.is_actionable).length;
+
+                    // Standard robust scoring formula
+                    const rawScore = (highCount * 35) + (actionableCount * 25) + (count * 15);
+                    const score = Math.min(100, Math.max(25, rawScore));
+                    const isSevere = score >= 65;
+                    const isModerate = score >= 35 && score < 65;
+
+                    return (
+                      <div className="p-3 bg-slate-950/90 border border-slate-800 rounded-xl space-y-2 shadow-inner">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>{isRulingActive ? '🛡️' : '⚡'}</span>
+                            <span>{isRulingActive ? 'Cadre Defense Priority' : 'Anti-Incumbency Vulnerability'}</span>
+                          </span>
+                          <span
+                            className={`text-[10px] font-black px-2 py-0.5 rounded border font-mono ${
+                              isSevere
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                : isModerate
+                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            }`}
+                          >
+                            {isSevere ? 'SEVERE' : isModerate ? 'MODERATE' : 'LOW'} ({score}/100)
+                          </span>
+                        </div>
+
+                        {/* Progress Bar */}
+                        <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                          <div
+                            className={`h-full transition-all duration-500 rounded-full ${
+                              isSevere
+                                ? 'bg-gradient-to-r from-amber-500 to-rose-500'
+                                : isModerate
+                                ? 'bg-gradient-to-r from-emerald-500 to-amber-500'
+                                : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${score}%` }}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
+                          <span>
+                            Constituency: <b className="text-amber-300">{selectedIncident.constituency || 'Target AC'}</b>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span>High: <b className="text-rose-400">{highCount}</b></span>
+                            <span>•</span>
+                            <span>Actionable: <b className="text-amber-400">{actionableCount}</b></span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div>
                     <h4 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
