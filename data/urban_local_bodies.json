@@ -1,0 +1,842 @@
+[
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "திருச்சி அரசு மருத்துவமனை",
+    "name_en": "Trichy GH",
+    "ac_name": "Tiruchirappalli (West)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "திருச்சி மருத்துவக் கல்லூரி",
+    "name_en": "Trichy Medical College",
+    "ac_name": "Tiruchirappalli (West)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "மகாத்மா காந்தி நினைவு அரசு மருத்துவமனை",
+    "name_en": "MGMGH Trichy",
+    "ac_name": "Tiruchirappalli (West)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "புத்தூர்",
+    "name_en": "Puthur",
+    "ac_name": "Tiruchirappalli (West)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "தில்லை நகர்",
+    "name_en": "Thillai Nagar",
+    "ac_name": "Tiruchirappalli (West)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "ஸ்ரீரங்கம்",
+    "name_en": "Srirangam",
+    "ac_name": "Srirangam"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "மணப்பாறை",
+    "name_en": "Manapparai",
+    "ac_name": "Manapparai"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "மருங்காபுரி",
+    "name_en": "Marungapuri",
+    "ac_name": "Manapparai"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "துவாக்குடி",
+    "name_en": "Thuvakudi",
+    "ac_name": "Thiruverumbur"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "திருவெறும்பூர்",
+    "name_en": "Thiruverumbur",
+    "ac_name": "Thiruverumbur"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "லால்குடி",
+    "name_en": "Lalgudi",
+    "ac_name": "Lalgudi"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "புள்ளம்பாடி",
+    "name_en": "Pullambadi",
+    "ac_name": "Lalgudi"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "முசிறி",
+    "name_en": "Musiri",
+    "ac_name": "Musiri"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "தொட்டியம்",
+    "name_en": "Thottiyam",
+    "ac_name": "Musiri"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "துறையூர்",
+    "name_en": "Thuraiyur",
+    "ac_name": "Thuraiyur"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "உப்பிலியபுரம்",
+    "name_en": "Uppiliyapuram",
+    "ac_name": "Thuraiyur"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "பொன்மலை",
+    "name_en": "Golden Rock",
+    "ac_name": "Tiruchirappalli (East)"
+  },
+  {
+    "district": "Tiruchirappalli",
+    "name_ta": "பாலக்கரை",
+    "name_en": "Palakkarai",
+    "ac_name": "Tiruchirappalli (East)"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "ஒத்தக்கடை",
+    "name_en": "Othakadai",
+    "ac_name": "Madurai East"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "மதுரை ஐகோர்ட்",
+    "name_en": "Madurai High Court",
+    "ac_name": "Madurai East"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "மதுரை உயர்நீதிமன்ற",
+    "name_en": "Madurai High Court Bench",
+    "ac_name": "Madurai East"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "அலங்காநல்லூர்",
+    "name_en": "Alanganallur",
+    "ac_name": "Sholavandan"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "பாலமேடு",
+    "name_en": "Palamedu",
+    "ac_name": "Sholavandan"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "வாடிப்பட்டி",
+    "name_en": "Vadipatti",
+    "ac_name": "Sholavandan"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "சோழவந்தான்",
+    "name_en": "Sholavandan",
+    "ac_name": "Sholavandan"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "திருப்பரங்குன்றம்",
+    "name_en": "Thiruparankundram",
+    "ac_name": "Thiruparankundram"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "அவனியாபுரம்",
+    "name_en": "Avaniyapuram",
+    "ac_name": "Thiruparankundram"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "பெருங்குடி",
+    "name_en": "Perungudi",
+    "ac_name": "Thiruparankundram"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "திருநகர்",
+    "name_en": "Thirunagar",
+    "ac_name": "Thiruparankundram"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "மதுரை விமான நிலையம்",
+    "name_en": "Madurai Airport",
+    "ac_name": "Thiruparankundram"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "மேலூர்",
+    "name_en": "Melur",
+    "ac_name": "Melur"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "உசிலம்பட்டி",
+    "name_en": "Usilampatti",
+    "ac_name": "Usilampatti"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "எழுமலை",
+    "name_en": "Elumalai",
+    "ac_name": "Usilampatti"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "டி.கல்லுப்பட்டி",
+    "name_en": "T.Kallupatti",
+    "ac_name": "Tirumangalam"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "திருமங்கலம்",
+    "name_en": "Tirumangalam",
+    "ac_name": "Tirumangalam"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "ராஜாஜி அரசு மருத்துவமனை",
+    "name_en": "Rajaji GH",
+    "ac_name": "Madurai North"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "மதுரை அரசு மருத்துவமனை",
+    "name_en": "Madurai GH",
+    "ac_name": "Madurai North"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "கோரிப்பாளையம்",
+    "name_en": "Goripalayam",
+    "ac_name": "Madurai North"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "தல்லாகுளம்",
+    "name_en": "Tallakulam",
+    "ac_name": "Madurai North"
+  },
+  {
+    "district": "Madurai",
+    "name_ta": "சிம்மக்கல்",
+    "name_en": "Simmakkal",
+    "ac_name": "Madurai Central"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "ராஜீவ் காந்தி அரசு மருத்துவமனை",
+    "name_en": "Rajiv Gandhi GH",
+    "ac_name": "Harbour"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "சென்னை அரசு பொது மருத்துவமனை",
+    "name_en": "Chennai GH",
+    "ac_name": "Harbour"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "சென்னை உயர்நீதிமன்ற",
+    "name_en": "Madras High Court",
+    "ac_name": "Harbour"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "தலைமைச் செயலகம்",
+    "name_en": "Secretariat Chennai",
+    "ac_name": "Harbour"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "ஸ்டான்லி அரசு மருத்துவமனை",
+    "name_en": "Stanley Hospital",
+    "ac_name": "Royapuram"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "கீழ்ப்பாக்கம் அரசு மருத்துவமனை",
+    "name_en": "Kilpauk Medical College",
+    "ac_name": "Anna Nagar"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "ராயப்பேட்டை அரசு மருத்துவமனை",
+    "name_en": "Royapettah GH",
+    "ac_name": "Mylapore"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "கோபாலபுரம்",
+    "name_en": "Gopalapuram",
+    "ac_name": "Thousand Lights"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "ஆழ்வார்பேட்டை",
+    "name_en": "Alwarpet",
+    "ac_name": "Thousand Lights"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "தி.நகர்",
+    "name_en": "T Nagar",
+    "ac_name": "Thiyagarayanagar"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "தியாகராய நகர்",
+    "name_en": "Thiyagaraya Nagar",
+    "ac_name": "Thiyagarayanagar"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "கிண்டி",
+    "name_en": "Guindy",
+    "ac_name": "Saidapet"
+  },
+  {
+    "district": "Chennai",
+    "name_ta": "வேளச்சேரி",
+    "name_en": "Velachery",
+    "ac_name": "Velachery"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "கோவை அரசு மருத்துவமனை",
+    "name_en": "Coimbatore GH",
+    "ac_name": "Coimbatore (South)"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "காந்திபுரம்",
+    "name_en": "Gandhipuram",
+    "ac_name": "Coimbatore (South)"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "உக்கடம்",
+    "name_en": "Ukkadam",
+    "ac_name": "Coimbatore (South)"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "சிங்காநல்லூர்",
+    "name_en": "Singanallur",
+    "ac_name": "Singanallur"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "பீளமேடு",
+    "name_en": "Peelamedu",
+    "ac_name": "Coimbatore (North)"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "சரவணம்பட்டி",
+    "name_en": "Saravanampatti",
+    "ac_name": "Kavundampalayam"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "பொள்ளாச்சி",
+    "name_en": "Pollachi",
+    "ac_name": "Pollachi"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "வால்பாறை",
+    "name_en": "Valparai",
+    "ac_name": "Valparai"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "சூலூர்",
+    "name_en": "Sulur",
+    "ac_name": "Sulur"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "மேட்டுப்பாளையம்",
+    "name_en": "Mettupalayam",
+    "ac_name": "Mettupalayam"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "காரமடை",
+    "name_en": "Karamadai",
+    "ac_name": "Mettupalayam"
+  },
+  {
+    "district": "Coimbatore",
+    "name_ta": "கிணத்துக்கடவு",
+    "name_en": "Kinathukadavu",
+    "ac_name": "Kinathukadavu"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "சேலம் அரசு மோகன் குமாரமங்கலம் மருத்துவமனை",
+    "name_en": "Salem GH",
+    "ac_name": "Salem (North)"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "சேலம் அரசு மருத்துவமனை",
+    "name_en": "Salem GH",
+    "ac_name": "Salem (North)"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "மேட்டூர்",
+    "name_en": "Mettur",
+    "ac_name": "Mettur"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "ஓமலூர்",
+    "name_en": "Omalur",
+    "ac_name": "Omalur"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "எடப்பாடி",
+    "name_en": "Edappadi",
+    "ac_name": "Edappadi"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "சங்ககிரி",
+    "name_en": "Sankari",
+    "ac_name": "Sankari"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "ஆத்தூர்",
+    "name_en": "Attur",
+    "ac_name": "Attur"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "கெங்கவல்லி",
+    "name_en": "Gangavalli",
+    "ac_name": "Gangavalli"
+  },
+  {
+    "district": "Salem",
+    "name_ta": "வாழப்பாடி",
+    "name_en": "Valapady",
+    "ac_name": "Yercaud"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "விருதுநகர் அரசு மருத்துவமனை",
+    "name_en": "Virudhunagar GH",
+    "ac_name": "Virudhunagar"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "அருப்புக்கோட்டை",
+    "name_en": "Aruppukkottai",
+    "ac_name": "Aruppukkottai"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "காரியாபட்டி",
+    "name_en": "Kariapatti",
+    "ac_name": "Tiruchuli"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "திருச்சுழி",
+    "name_en": "Tiruchuli",
+    "ac_name": "Tiruchuli"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "மல்லாங்கிணர்",
+    "name_en": "Mallankinaru",
+    "ac_name": "Aruppukkottai"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "சாத்தூர்",
+    "name_en": "Sattur",
+    "ac_name": "Sattur"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "சிவகாசி",
+    "name_en": "Sivakasi",
+    "ac_name": "Sivakasi"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "ஸ்ரீவில்லிபுத்தூர்",
+    "name_en": "Srivilliputhur",
+    "ac_name": "Srivilliputhur"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "ராஜபாளையம்",
+    "name_en": "Rajapalayam",
+    "ac_name": "Rajapalayam"
+  },
+  {
+    "district": "Virudhunagar",
+    "name_ta": "விருதுநகர்",
+    "name_en": "Virudhunagar",
+    "ac_name": "Virudhunagar"
+  },
+  {
+    "district": "Tirunelveli",
+    "name_ta": "திருநெல்வேலி அரசு மருத்துவக் கல்லூரி",
+    "name_en": "Tirunelveli Medical College",
+    "ac_name": "Palayamkottai"
+  },
+  {
+    "district": "Tirunelveli",
+    "name_ta": "பாளையங்கோட்டை",
+    "name_en": "Palayamkottai",
+    "ac_name": "Palayamkottai"
+  },
+  {
+    "district": "Tirunelveli",
+    "name_ta": "அம்பாசமுத்திரம்",
+    "name_en": "Ambasamudram",
+    "ac_name": "Ambasamudram"
+  },
+  {
+    "district": "Tirunelveli",
+    "name_ta": "நாங்குநேரி",
+    "name_en": "Nanguneri",
+    "ac_name": "Nanguneri"
+  },
+  {
+    "district": "Tirunelveli",
+    "name_ta": "ராதாபுரம்",
+    "name_en": "Radhapuram",
+    "ac_name": "Radhapuram"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "தென்காசி",
+    "name_en": "Tenkasi",
+    "ac_name": "Tenkasi"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "செங்கோட்டை",
+    "name_en": "Sengottai",
+    "ac_name": "Tenkasi"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "கடையநல்லூர்",
+    "name_en": "Kadayanallur",
+    "ac_name": "Kadayanallur"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "சங்கரன்கோவில்",
+    "name_en": "Sankarankovil",
+    "ac_name": "Sankarankovil"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "வாசுதேவநல்லூர்",
+    "name_en": "Vasudevanallur",
+    "ac_name": "Vasudevanallur"
+  },
+  {
+    "district": "Tenkasi",
+    "name_ta": "ஆலங்குளம்",
+    "name_en": "Alangulam",
+    "ac_name": "Alangulam"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "திண்டுக்கல் அரசு மருத்துவமனை",
+    "name_en": "Dindigul GH",
+    "ac_name": "Dindigul"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "பழனி",
+    "name_en": "Palani",
+    "ac_name": "Palani"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "ஒட்டன்சத்திரம்",
+    "name_en": "Oddanchatram",
+    "ac_name": "Oddanchatram"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "ஆத்தூர் திண்டுக்கல்",
+    "name_en": "Athoor",
+    "ac_name": "Athoor"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "நிலக்கோட்டை",
+    "name_en": "Nilakkottai",
+    "ac_name": "Nilakkottai"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "நத்தம்",
+    "name_en": "Natham",
+    "ac_name": "Natham"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "வேடசந்தூர்",
+    "name_en": "Vedasandur",
+    "ac_name": "Vedasandur"
+  },
+  {
+    "district": "Dindigul",
+    "name_ta": "கொடைக்கானல்",
+    "name_en": "Kodaikanal",
+    "ac_name": "Palani"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "ஈரோடு அரசு மருத்துவமனை",
+    "name_en": "Erode GH",
+    "ac_name": "Erode (West)"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "பவானி",
+    "name_en": "Bhavani",
+    "ac_name": "Bhavani"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "அந்தியூர்",
+    "name_en": "Anthiyur",
+    "ac_name": "Anthiyur"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "கோபிசெட்டிபாளையம்",
+    "name_en": "Gobichettipalayam",
+    "ac_name": "Gobichettipalayam"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "பெருந்துறை",
+    "name_en": "Perundurai",
+    "ac_name": "Perundurai"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "பவானிசாகர்",
+    "name_en": "Bhavanisagar",
+    "ac_name": "Bhavanisagar"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "கொடுமுடி",
+    "name_en": "Kodumudi",
+    "ac_name": "Modakkurichi"
+  },
+  {
+    "district": "Erode",
+    "name_ta": "மொடக்குறிச்சி",
+    "name_en": "Modakkurichi",
+    "ac_name": "Modakkurichi"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "தஞ்சாவூர் மருத்துவக் கல்லூரி",
+    "name_en": "Thanjavur Medical College",
+    "ac_name": "Thanjavur"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "கும்பகோணம்",
+    "name_en": "Kumbakonam",
+    "ac_name": "Kumbakonam"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "திருவிடைமருதூர்",
+    "name_en": "Thiruvidaimarudur",
+    "ac_name": "Thiruvidaimarudur"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "பாபநாசம்",
+    "name_en": "Papanasam",
+    "ac_name": "Papanasam"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "திருவையாறு",
+    "name_en": "Thiruvaiyaru",
+    "ac_name": "Thiruvaiyaru"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "ஒரத்தநாடு",
+    "name_en": "Orathanadu",
+    "ac_name": "Orathanadu"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "பட்டுக்கோட்டை",
+    "name_en": "Pattukkottai",
+    "ac_name": "Pattukkottai"
+  },
+  {
+    "district": "Thanjavur",
+    "name_ta": "பேராவூரணி",
+    "name_en": "Peravurani",
+    "ac_name": "Peravurani"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "செங்கல்பட்டு அரசு மருத்துவக் கல்லூரி",
+    "name_en": "Chengalpattu GH",
+    "ac_name": "Chengalpattu"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "தாம்பரம்",
+    "name_en": "Tambaram",
+    "ac_name": "Tambaram"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "பல்லாவரம்",
+    "name_en": "Pallavaram",
+    "ac_name": "Pallavaram"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "செங்கல்பட்டு",
+    "name_en": "Chengalpattu",
+    "ac_name": "Chengalpattu"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "திருப்போரூர்",
+    "name_en": "Tiruporur",
+    "ac_name": "Tiruporur"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "மாமல்லபுரம்",
+    "name_en": "Mamallapuram",
+    "ac_name": "Tiruporur"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "செய்யூர்",
+    "name_en": "Cheyyur",
+    "ac_name": "Cheyyur"
+  },
+  {
+    "district": "Chengalpattu",
+    "name_ta": "மதுராந்தகம்",
+    "name_en": "Madhuranthakam",
+    "ac_name": "Madhuranthakam"
+  },
+  {
+    "district": "Kanchipuram",
+    "name_ta": "காஞ்சிபுரம் அரசு மருத்துவமனை",
+    "name_en": "Kanchipuram GH",
+    "ac_name": "Kancheepuram"
+  },
+  {
+    "district": "Kanchipuram",
+    "name_ta": "காஞ்சிபுரம்",
+    "name_en": "Kanchipuram",
+    "ac_name": "Kancheepuram"
+  },
+  {
+    "district": "Kanchipuram",
+    "name_ta": "உத்திரமேரூர்",
+    "name_en": "Uthiramerur",
+    "ac_name": "Uthiramerur"
+  },
+  {
+    "district": "Kanchipuram",
+    "name_ta": "ஸ்ரீபெரும்புதூர்",
+    "name_en": "Sriperumbudur",
+    "ac_name": "Sriperumbudur"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "திருவள்ளூர் அரசு மருத்துவமனை",
+    "name_en": "Tiruvallur GH",
+    "ac_name": "Thiruvallur"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "பொன்னேரி",
+    "name_en": "Ponneri",
+    "ac_name": "Ponneri"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "கும்மிடிப்பூண்டி",
+    "name_en": "Gummidipoondi",
+    "ac_name": "Gummidipoondi"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "திருத்தணி",
+    "name_en": "Tiruttani",
+    "ac_name": "Tiruttani"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "திருவள்ளூர்",
+    "name_en": "Tiruvallur",
+    "ac_name": "Thiruvallur"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "பூந்தமல்லி",
+    "name_en": "Poonamallee",
+    "ac_name": "Poonamallee"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "ஆவடி",
+    "name_en": "Avadi",
+    "ac_name": "Avadi"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "மதுரவாயல்",
+    "name_en": "Maduravoyal",
+    "ac_name": "Maduravoyal"
+  },
+  {
+    "district": "Tiruvallur",
+    "name_ta": "அம்பத்தூர்",
+    "name_en": "Ambattur",
+    "ac_name": "Ambattur"
+  }
+]

@@ -1,0 +1,211 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Untitled Document</title>
+</head>
+
+<body>
+<table width="90%" border="1" cellpadding="0" cellspacing="0" bordercolor="#5FC1F5" style="border-collapse:collapse; font: bold 10pt Verdana, Geneva, sans-serif; color:#000;" align="center" valign="middle" >
+<thead> 
+<tr style="background-image: -moz-linear-gradient(top, #dcf4fe 25%, #b6eaff 80%); " >
+    <th align="center">LGD<strong> District Code</strong></th>
+    <th height="30" align="center"><span id="sorternew"><strong>District Name</strong></span></th>
+    
+</tr>
+</thead> 
+<tbody> 
+<tr>
+    <td height="30" align="center">528</td>
+    <td height="30" align="left"> காஞ்சிபுரம்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">543</td>
+    <td height="30" align="left"> திருவள்ளுர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">524</td>
+    <td height="30" align="left"> கடலூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">550</td>
+    <td height="30" align="left"> விழுப்புரம்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">549</td>
+    <td height="30" align="left"> வேலூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">547</td>
+    <td height="30" align="left"> திருவண்ணாமலை</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">538</td>
+    <td height="30" align="left"> சேலம்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">534</td>
+    <td height="30" align="left"> நாமக்கல்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">525</td>
+    <td height="30" align="left"> தர்மபுரி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">527</td>
+    <td height="30" align="left"> ஈரோடு</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">523</td>
+    <td height="30" align="left"> கோயம்புத்தூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">541</td>
+    <td height="30" align="left"> நீலகிரி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">540</td>
+    <td height="30" align="left"> தஞ்சாவூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">533</td>
+    <td height="30" align="left"> நாகப்பட்டினம்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">544</td>
+    <td height="30" align="left"> திருவாரூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">545</td>
+    <td height="30" align="left"> திருச்சிராப்பள்ளி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">530</td>
+    <td height="30" align="left"> கரூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">535</td>
+    <td height="30" align="left"> பெரம்பலூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">536</td>
+    <td height="30" align="left"> புதுக்கோட்டை</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">532</td>
+    <td height="30" align="left"> மதுரை</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">542</td>
+    <td height="30" align="left"> தேனி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">526</td>
+    <td height="30" align="left"> திண்டுக்கல்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">537</td>
+    <td height="30" align="left"> இராமநாதபுரம்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">551</td>
+    <td height="30" align="left"> விருதுநகர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">539</td>
+    <td height="30" align="left"> சிவகங்கை</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">546</td>
+    <td height="30" align="left"> திருநெல்வேலி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">548</td>
+    <td height="30" align="left"> தூத்துக்குடி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">529</td>
+    <td height="30" align="left"> கன்னியாகுமரி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">531</td>
+    <td height="30" align="left"> கிருஷ்ணகிரி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">560</td>
+    <td height="30" align="left"> அரியலூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">578</td>
+    <td height="30" align="left"> திருப்பூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">296956</td>
+    <td height="30" align="left"> தென்காசி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">296959</td>
+    <td height="30" align="left"> கள்ளக்குறிச்சி</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">296974</td>
+    <td height="30" align="left"> செங்கல்பட்டு</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">296957</td>
+    <td height="30" align="left"> ராணிப்பேட்டை</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">296958</td>
+    <td height="30" align="left"> திருப்பத்தூர்</td>
+   
+</tr>
+<tr>
+    <td height="30" align="center">299380</td>
+    <td height="30" align="left"> மயிலாடுதுறை</td>
+   
+</tr>
+
+</tbody>
+</table>
+
+
+
+			
+</body>
+</html>
