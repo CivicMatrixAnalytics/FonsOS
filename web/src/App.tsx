@@ -26,7 +26,8 @@ import {
   Flame,
   Lock,
   Unlock,
-  KeyRound
+  KeyRound,
+  Radio
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -98,6 +99,9 @@ export default function App() {
   const [passcode, setPasscode] = useState<string>('');
   const [loginError, setLoginError] = useState<string>('');
   const [candidateParty, setCandidateParty] = useState<string>('DMK');
+
+  // Realtime Live Feed Notification
+  const [realtimeAlert, setRealtimeAlert] = useState<string | null>(null);
 
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
@@ -189,6 +193,25 @@ export default function App() {
     fetchPoliticalConfig();
     fetchMlaRegistry();
     fetchIncidents();
+
+    // Automated Supabase Realtime Subscription
+    const channel = supabase
+      .channel('incidents-realtime-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'incidents' },
+        (payload) => {
+          const newIncident = payload.new as Incident;
+          setIncidents((prev) => [newIncident, ...prev]);
+          setRealtimeAlert(newIncident.title);
+          setTimeout(() => setRealtimeAlert(null), 4500);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const isPublic = userRole === 'public';
@@ -399,6 +422,14 @@ ${isRulingActive
 
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+      {/* Realtime Alert Notification Toast */}
+      {realtimeAlert && (
+        <div className="fixed top-18 right-6 z-50 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-xl shadow-2xl font-bold text-xs flex items-center gap-2 border border-amber-300 animate-bounce">
+          <Radio size={16} className="text-slate-950 animate-pulse" />
+          <span>⚡ Live Ground Incident Ingested: {realtimeAlert}</span>
+        </div>
+      )}
+
       {/* Top Header */}
       <header className="h-16 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between z-20 backdrop-blur">
         <div className="flex items-center gap-3">
@@ -414,6 +445,10 @@ ${isRulingActive
                   : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
               }`}>
                 {isPublic ? 'TN HYPERLOCAL FEED' : `${politicalConfig.election_cycle} WAR-ROOM INTEL`}
+              </span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                LIVE SYNC
               </span>
             </div>
             <p className="text-xs text-slate-400">
