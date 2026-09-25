@@ -27,7 +27,9 @@ import {
   Lock,
   Unlock,
   KeyRound,
-  Radio
+  Radio,
+  FileText,
+  BarChart3
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -102,6 +104,10 @@ export default function App() {
 
   // Realtime Live Feed Notification
   const [realtimeAlert, setRealtimeAlert] = useState<string | null>(null);
+
+  // Constituency Deep Dive Modal State
+  const [deepDiveAC, setDeepDiveAC] = useState<string | null>(null);
+  const [dossierExportCopied, setDossierExportCopied] = useState<boolean>(false);
 
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
@@ -354,10 +360,83 @@ export default function App() {
     return null;
   }, [selectedDistrict, selectedConstituency, filteredIncidents]);
 
+  // Deep Dive AC Target Context Extraction
+  const deepDiveData = useMemo(() => {
+    if (!deepDiveAC) return null;
+    const acIncidents = incidents.filter((i) => {
+      const label = i.ac_number ? `AC ${i.ac_number}: ${i.constituency}` : i.constituency;
+      return label === deepDiveAC || i.constituency === deepDiveAC;
+    });
+
+    const sample = acIncidents[0] || null;
+    const acNum = sample?.ac_number || null;
+    const mla = getMlaDetails(acNum);
+
+    const antiCount = acIncidents.filter((i) => i.political_sentiment === 'anti_incumbency').length;
+    const defCount = acIncidents.filter((i) => i.political_sentiment === 'ruling_defense').length;
+    const neutralCount = acIncidents.filter((i) => i.political_sentiment === 'neutral').length;
+    const actionableList = acIncidents.filter((i) => i.is_actionable);
+
+    const highCount = acIncidents.filter((i) => i.severity === 'High').length;
+    const rawScore = (highCount * 35) + (actionableList.length * 25) + (acIncidents.length * 15);
+    const score = Math.min(100, Math.max(25, rawScore));
+
+    return {
+      acName: deepDiveAC,
+      acNum,
+      district: sample?.district || 'Tamil Nadu',
+      mla,
+      totalIncidents: acIncidents.length,
+      antiCount,
+      defCount,
+      neutralCount,
+      actionableList,
+      score,
+      allIncidents: acIncidents
+    };
+  }, [deepDiveAC, incidents, mlaRegistry]);
+
   const handleCopyText = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedDraft(true);
     setTimeout(() => setCopiedDraft(false), 2000);
+  };
+
+  const handleExportACDossier = () => {
+    if (!deepDiveData) return;
+    const mlaStr = deepDiveData.mla ? `${deepDiveData.mla.mla_name} (${deepDiveData.mla.party})` : 'Unassigned';
+
+    const issues = deepDiveData.actionableList.map((item, idx) => {
+      return `${idx + 1}. [${item.category}] ${item.title}\n   Charge: ${item.attack_angle || item.summary}\n   Proof: ${item.proof_url}`;
+    }).join('\n\n');
+
+    const dossierText = `======================================================================
+CIVIC MATRIX ANALYTICS - CONSTITUENCY EXECUTIVE INTELLIGENCE DOSSIER
+Assembly Constituency: ${deepDiveData.acName}
+District: ${deepDiveData.district} | Election Cycle: ${politicalConfig.election_cycle}
+Sitting MLA: ${mlaStr}
+Generated At: ${new Date().toLocaleDateString('en-IN')}
+======================================================================
+
+I. STRATEGIC VULNERABILITY METRIC:
+- Anti-Incumbency Vulnerability Score: ${deepDiveData.score}/100 [${deepDiveData.score >= 65 ? 'SEVERE FLASHPOINT' : 'MODERATE'}]
+- Total Recorded Ground Incidents: ${deepDiveData.totalIncidents}
+- Anti-Incumbency Flashpoints: ${deepDiveData.antiCount}
+- Ruling Defense / Remediation Events: ${deepDiveData.defCount}
+- Neutral Civic Observations: ${deepDiveData.neutralCount}
+
+II. TOP ACTIONABLE FIELD CHARGES & GROUND FLASHPOINTS:
+${issues || 'No high-priority actionable ground charges currently recorded for this assembly seat.'}
+
+III. RECOMMENDED FIELD CAMPAIGN DIRECTIVE:
+${isRulingActive 
+  ? `Mobilize local constituency observers to expedite grievance redressal across affected wards. Neutralize localized opposition narratives with documented welfare delivery proofs.`
+  : `Direct booth-level campaign teams to distribute localized charge-sheets highlighting administrative failure of sitting MLA ${mlaStr}. Focus door-to-door campaigning on civic grievances.`}
+======================================================================`;
+
+    navigator.clipboard.writeText(dossierText);
+    setDossierExportCopied(true);
+    setTimeout(() => setDossierExportCopied(false), 2500);
   };
 
   const handleWhatsAppShare = (incident: Incident, type: 'attack' | 'defense') => {
@@ -460,6 +539,17 @@ ${isRulingActive
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Deep Dive Action Button (If AC is Selected in filter) */}
+          {selectedConstituency !== 'All' && !isPublic && (
+            <button
+              onClick={() => setDeepDiveAC(selectedConstituency)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition-all cursor-pointer shadow-sm"
+            >
+              <BarChart3 size={14} />
+              <span>AC Intel Dossier</span>
+            </button>
+          )}
+
           {/* Public Badge vs Time Scope */}
           {isPublic ? (
             <div className="bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-lg text-[11px] font-medium text-amber-400 flex items-center gap-1.5">
@@ -709,6 +799,7 @@ ${isRulingActive
               const isActionable = incident.is_actionable;
               const mla = getMlaDetails(incident.ac_number);
               const isRulingMla = mla && mla.party === politicalConfig.ruling_party;
+              const acLabel = incident.ac_number ? `AC ${incident.ac_number}: ${incident.constituency}` : `${incident.constituency}`;
 
               return (
                 <div
@@ -726,10 +817,21 @@ ${isRulingActive
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {incident.constituency ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isPublic) {
+                              setDeepDiveAC(acLabel);
+                            }
+                          }}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center gap-1 transition-all ${
+                            !isPublic ? 'hover:bg-amber-500/30 hover:border-amber-400 cursor-pointer' : ''
+                          }`}
+                          title={!isPublic ? "Click for Constituency Deep Dive Dossier" : ""}
+                        >
                           <Building2 size={11} />
                           {incident.ac_number ? `AC ${incident.ac_number}: ` : ''}{incident.constituency}
-                        </span>
+                        </button>
                       ) : (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
                           {incident.category}
@@ -919,9 +1021,21 @@ ${isRulingActive
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   {selectedIncident.constituency && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                    <button
+                      onClick={() => {
+                        if (!isPublic) {
+                          const acLabel = selectedIncident.ac_number 
+                            ? `AC ${selectedIncident.ac_number}: ${selectedIncident.constituency}` 
+                            : (selectedIncident.constituency || null);
+                          if (acLabel) setDeepDiveAC(acLabel);
+                        }
+                      }}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase ${
+                        !isPublic ? 'hover:bg-amber-500/30 cursor-pointer' : ''
+                      }`}
+                    >
                       {selectedIncident.ac_number ? `AC ${selectedIncident.ac_number}: ` : ''}{selectedIncident.constituency}
-                    </span>
+                    </button>
                   )}
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                     {selectedIncident.category}
@@ -1236,6 +1350,145 @@ ${isRulingActive
           </div>
         )}
       </div>
+
+      {/* Constituency Deep Dive & Dossier Export Modal */}
+      {deepDiveAC && deepDiveData && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
+                  <Building2 size={24} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-white">{deepDiveData.acName}</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                      {deepDiveData.district}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">Micro-Constituency Vulnerability Profile & Field Charge-Sheet</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportACDossier}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
+                  title="Copy Full A4 Briefing Dossier to Clipboard"
+                >
+                  {dossierExportCopied ? <Check size={14} className="text-emerald-300" /> : <FileText size={14} />}
+                  <span>{dossierExportCopied ? 'Dossier Copied!' : 'Export Field Dossier'}</span>
+                </button>
+                <button
+                  onClick={() => setDeepDiveAC(null)}
+                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+              {/* MLA & Seat Overview */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Sitting MLA</span>
+                  <span className="font-bold text-sm text-slate-100 mt-0.5 block">
+                    {deepDiveData.mla ? deepDiveData.mla.mla_name : 'Data Ingesting...'}
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-400 mt-1 block">
+                    {deepDiveData.mla ? `Party: ${deepDiveData.mla.party}` : 'Party Pending'}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Vulnerability Score</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-base font-black text-amber-400">{deepDiveData.score}/100</span>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                      deepDiveData.score >= 65 
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' 
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    }`}>
+                      {deepDiveData.score >= 65 ? 'SEVERE' : 'MODERATE'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    {deepDiveData.actionableList.length} Actionable Issues
+                  </span>
+                </div>
+
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Total Ingested</span>
+                  <span className="text-base font-black text-slate-100 mt-0.5 block">{deepDiveData.totalIncidents}</span>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
+                    <span className="text-rose-400">⚡ {deepDiveData.antiCount}</span>
+                    <span>•</span>
+                    <span className="text-emerald-400">🛡️ {deepDiveData.defCount}</span>
+                    <span>•</span>
+                    <span className="text-slate-400">🏛️ {deepDiveData.neutralCount}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actionable Flashpoints List */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <Flame size={14} className="text-amber-500" />
+                    <span>Constituency Ground Flashpoints & Directives</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {deepDiveData.actionableList.length} Actionable Charges
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {deepDiveData.actionableList.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5 hover:border-slate-700 transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          {item.category}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{item.incident_date}</span>
+                      </div>
+                      <h5 className="font-semibold text-slate-200 text-xs">{item.title}</h5>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        {isRulingActive ? (item.defense_angle || item.summary) : (item.attack_angle || item.summary)}
+                      </p>
+                    </div>
+                  ))}
+
+                  {deepDiveData.actionableList.length === 0 && (
+                    <div className="p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                      No high-severity actionable ground charges recorded for this constituency.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Civic Matrix Analytics • Field Intelligence Unit
+              </span>
+              <button
+                onClick={() => setDeepDiveAC(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition-all cursor-pointer"
+              >
+                Close Dossier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* War-Room Login Modal */}
       {showLoginModal && (
