@@ -22,7 +22,8 @@ import {
   BrainCircuit,
   Target,
   AlertTriangle,
-  UserCheck
+  UserCheck,
+  Flame
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -96,6 +97,7 @@ export default function App() {
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedSentiment, setSelectedSentiment] = useState<string>('All');
   const [selectedPartyFilter, setSelectedPartyFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [actionableOnly, setActionableOnly] = useState<boolean>(false);
@@ -219,6 +221,7 @@ export default function App() {
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
       const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
       const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
+      const matchSentiment = selectedSentiment === 'All' || inc.political_sentiment === selectedSentiment;
       const matchActionable = !actionableOnly || inc.is_actionable;
       const matchSearch =
         searchQuery === '' ||
@@ -236,9 +239,25 @@ export default function App() {
         else if (timeFilter === '30D') matchTime = diffDays <= 30;
       }
 
-      return matchDistrict && matchConstituency && matchCategory && matchActionable && matchSearch && matchTime;
+      return matchDistrict && matchConstituency && matchCategory && matchSentiment && matchActionable && matchSearch && matchTime;
     });
-  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
+  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
+
+  // Flashpoint detection: identify locations with 5+ incidents in current scope
+  const flashpointCounts = useMemo(() => {
+    const mapCount: Record<string, number> = {};
+    filteredIncidents.forEach((inc) => {
+      const key = inc.constituency || inc.district;
+      if (key) {
+        mapCount[key] = (mapCount[key] || 0) + 1;
+      }
+    });
+    return mapCount;
+  }, [filteredIncidents]);
+
+  const activeFlashpoints = useMemo(() => {
+    return Object.entries(flashpointCounts).filter(([_, count]) => count >= 5);
+  }, [flashpointCounts]);
 
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
@@ -390,6 +409,11 @@ ${isRulingActive
                   </option>
                 ))}
               </optgroup>
+              <optgroup label="Challenger / Third Front" className="bg-slate-900 text-slate-400">
+                <option value="THIRD_FRONT" className="bg-slate-900 text-indigo-300">
+                  Third Front (Challenger)
+                </option>
+              </optgroup>
             </select>
           </div>
 
@@ -430,12 +454,22 @@ ${isRulingActive
           <span>
             {isRulingActive
               ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Field Remediation`
+              : warRoomLens === 'THIRD_FRONT'
+              ? 'THIRD FRONT / CHALLENGER LENS ACTIVE | Anti-Establishment Vulnerability Exposure'
               : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Ground Charges`}
           </span>
         </div>
-        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
-          {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
-        </span>
+        <div className="flex items-center gap-3">
+          {activeFlashpoints.length > 0 && (
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 flex items-center gap-1 animate-pulse">
+              <Flame size={11} />
+              🚨 {activeFlashpoints.length} Flashpoint Spike{activeFlashpoints.length > 1 ? 's' : ''} (5+ Incidents)
+            </span>
+          )}
+          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
+            {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
+          </span>
+        </div>
       </div>
 
       {/* Dynamic 234 Assembly Seat Share Tally Bar */}
@@ -496,15 +530,44 @@ ${isRulingActive
                 ))}
               </select>
 
-              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer pl-1">
+              <select
+                value={selectedSentiment}
+                onChange={(e) => setSelectedSentiment(e.target.value)}
+                className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
+              >
+                <option value="All" className="bg-slate-900">All Sentiments</option>
+                <option value="anti_incumbency" className="bg-slate-900">⚡ Anti-Incumbency</option>
+                <option value="ruling_defense" className="bg-slate-900">🛡️ Ruling Counter</option>
+                <option value="neutral" className="bg-slate-900">🏛️ Civic Neutral</option>
+              </select>
+            </div>
+
+            <div className="pt-1 flex items-center justify-between">
+              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={actionableOnly}
                   onChange={(e) => setActionableOnly(e.target.checked)}
                   className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer"
                 />
-                Actionable Only
+                Actionable Ground Flashpoints Only
               </label>
+              {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter) && (
+                <button
+                  onClick={() => {
+                    setSelectedDistrict('All');
+                    setSelectedConstituency('All');
+                    setSelectedCategory('All');
+                    setSelectedSentiment('All');
+                    setSelectedPartyFilter(null);
+                    setActionableOnly(false);
+                    setSearchQuery('');
+                  }}
+                  className="text-[10px] text-amber-400 hover:underline cursor-pointer"
+                >
+                  Reset Filters
+                </button>
+              )}
             </div>
           </div>
 
@@ -644,6 +707,9 @@ ${isRulingActive
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
+              const placeKey = incident.constituency || incident.district;
+              const isFlashpoint = placeKey && (flashpointCounts[placeKey] || 0) >= 5;
+
               const color = isActionable
                 ? isRulingActive
                   ? '#f59e0b'
@@ -651,37 +717,58 @@ ${isRulingActive
                 : '#10b981';
 
               return (
-                <CircleMarker
-                  key={incident.id}
-                  center={[incident.latitude, incident.longitude]}
-                  radius={isSelected ? 11 : isActionable ? 8 : 5}
-                  pathOptions={{
-                    color: color,
-                    fillColor: color,
-                    fillOpacity: isSelected ? 0.9 : 0.6,
-                    weight: isSelected ? 3 : 1.5,
-                  }}
-                  eventHandlers={{
-                    click: () => {
-                      setSelectedIncident(incident);
-                      setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
-                    },
-                  }}
-                >
-                  <Popup>
-                    <div className="p-1 text-xs max-w-xs text-slate-900 font-sans">
-                      <div className="font-bold mb-1">{incident.title}</div>
-                      <div className="text-[10px] text-slate-600 mb-1">
-                        {incident.constituency ? `AC: ${incident.constituency} | ` : ''}{incident.district}
-                      </div>
-                      {incident.strategic_tag && (
-                        <div className="text-[10px] font-semibold text-indigo-600">
-                          {incident.strategic_tag}
+                <div key={incident.id}>
+                  {/* Heat Intensity Outer Pulsing Circle for Flashpoints */}
+                  {isFlashpoint && (
+                    <CircleMarker
+                      center={[incident.latitude, incident.longitude]}
+                      radius={22}
+                      pathOptions={{
+                        color: '#f43f5e',
+                        fillColor: '#f43f5e',
+                        fillOpacity: 0.18,
+                        weight: 1,
+                        dashArray: '3, 6'
+                      }}
+                    />
+                  )}
+
+                  <CircleMarker
+                    center={[incident.latitude, incident.longitude]}
+                    radius={isSelected ? 11 : isActionable ? 8 : 5}
+                    pathOptions={{
+                      color: isFlashpoint ? '#f43f5e' : color,
+                      fillColor: isFlashpoint ? '#e11d48' : color,
+                      fillOpacity: isSelected ? 0.95 : 0.65,
+                      weight: isSelected ? 3 : 1.5,
+                    }}
+                    eventHandlers={{
+                      click: () => {
+                        setSelectedIncident(incident);
+                        setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
+                      },
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-1 text-xs max-w-xs text-slate-900 font-sans">
+                        <div className="font-bold mb-1">{incident.title}</div>
+                        <div className="text-[10px] text-slate-600 mb-1">
+                          {incident.constituency ? `AC: ${incident.constituency} | ` : ''}{incident.district}
                         </div>
-                      )}
-                    </div>
-                  </Popup>
-                </CircleMarker>
+                        {isFlashpoint && (
+                          <div className="text-[10px] font-bold text-rose-600 mb-1">
+                            🚨 Flashpoint Hotspot ({flashpointCounts[placeKey]} issues in area)
+                          </div>
+                        )}
+                        {incident.strategic_tag && (
+                          <div className="text-[10px] font-semibold text-indigo-600">
+                            {incident.strategic_tag}
+                          </div>
+                        )}
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                </div>
               );
             })}
           </MapContainer>
@@ -867,7 +954,7 @@ ${isRulingActive
                 <div className="space-y-4">
                   <div className="p-3 bg-rose-950/30 border border-rose-800/40 rounded-lg">
                     <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
-                      Opposition Charge Point ({warRoomLens} Lens)
+                      Opposition Charge Point ({warRoomLens === 'THIRD_FRONT' ? 'Third Front' : warRoomLens} Lens)
                     </span>
                     <p className="text-slate-200 font-medium leading-relaxed">
                       {selectedIncident.attack_angle ||
