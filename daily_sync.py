@@ -5,26 +5,38 @@ import datetime
 import urllib.parse
 import xml.etree.ElementTree as ET
 import requests
+from dotenv import load_dotenv
+
+# Load local .env credentials
+load_dotenv()
+
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 from supabase import create_client, Client
+from geo_resolver import resolve_constituency
 
 # ---------------------------------------------------------
 # Environment & Client Setup
 # ---------------------------------------------------------
-SUPABASE_URL = os.environ.get("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://yqystwfszetkbhwggzrv.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "sb_publishable_Z_w1EUQzWNsBV-KQpXMKYg_yRq-anmn"
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.")
 
-if not GEMINI_API_KEY:
-    raise ValueError("Missing GEMINI_API_KEY in environment variables.")
+# Point to dedicated FonsOS service account JSON
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(BASE_DIR, "service_account.json")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-ai_client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Initialize Vertex AI client using ExtractOS project
+ai_client = genai.Client(
+    vertexai=True,
+    project="extractos-506408",
+    location="us-central1"
+)
 
 # ---------------------------------------------------------
 # Load Master 234 Assembly Constituencies Reference
@@ -159,7 +171,7 @@ Schema for each item in the array:
 
     try:
         response = ai_client.models.generate_content(
-            model="gemini-3.6-flash",
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -224,16 +236,35 @@ def run_daily_sync():
             district = intel.get("district") or "Tamil Nadu"
             coords = DISTRICT_COORDS.get(district, (DEFAULT_TN_LAT, DEFAULT_TN_LNG))
 
+            title_text = intel.get("title") or orig_item.get("title", "")
+            summary_text = intel.get("summary") or orig_item.get("title", "")
+            full_text = f"{title_text} {summary_text}".strip()
+
             ac_name = intel.get("constituency")
             ac_num = intel.get("ac_number")
+
+            # Deterministic Bilingual Geo Resolver Fallback
+            if not ac_name or not ac_num:
+                geo_res = resolve_constituency(district=district, raw_text=full_text)
+                if geo_res and geo_res.get("constituency"):
+                    ac_name = geo_res["constituency"]
+
+            # Resolve AC Number from master registry
             if ac_name and not ac_num and master_acs:
-                match = next((ac for ac in master_acs if ac["name"].lower() == ac_name.lower()), None)
+                ac_name_clean = ac_name.strip().lower()
+                match = next(
+                    (ac for ac in master_acs if ac.get("name", "").strip().lower() in [ac_name_clean, ac_name_clean.replace(" ", "")]),
+                    None
+                )
+                if not match and ac_name_clean in ["villupuram", "viluppuram"]:
+                    match = next((ac for ac in master_acs if ac.get("name", "").strip().lower() in ["viluppuram", "villupuram"]), None)
+
                 if match:
-                    ac_num = match["ac_number"]
+                    ac_num = match.get("ac_number")
 
             payload = {
-                "title": intel.get("title") or orig_item["title"],
-                "summary": intel.get("summary") or orig_item["title"],
+                "title": title_text,
+                "summary": summary_text,
                 "district": district,
                 "latitude": coords[0],
                 "longitude": coords[1],
@@ -253,7 +284,7 @@ def run_daily_sync():
 
             try:
                 supabase.from_("incidents").insert(payload).execute()
-                print(f"-> [SUCCESS] Ingested: {payload['title'][:40]} | [{payload['political_sentiment']}] | AC: {payload['ac_number'] or 'N/A'}")
+                print(f"-> [SUCCESS] Ingested: {payload['title'][:40]} | [{payload['political_sentiment']}] | AC: {payload['ac_number'] or 'N/A'} ({payload['constituency'] or 'Unassigned'})")
                 inserted_count += 1
             except Exception as e:
                 print(f"-> [ERROR] Supabase insert notice: {e}")
