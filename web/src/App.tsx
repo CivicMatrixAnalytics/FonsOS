@@ -360,7 +360,7 @@ export default function App() {
     return null;
   }, [selectedDistrict, selectedConstituency, filteredIncidents]);
 
-  // Deep Dive AC Target Context Extraction
+  // Deep Dive AC Target Context Extraction with Smart Fallback
   const deepDiveData = useMemo(() => {
     if (!deepDiveAC) return null;
     const acIncidents = incidents.filter((i) => {
@@ -375,7 +375,10 @@ export default function App() {
     const antiCount = acIncidents.filter((i) => i.political_sentiment === 'anti_incumbency').length;
     const defCount = acIncidents.filter((i) => i.political_sentiment === 'ruling_defense').length;
     const neutralCount = acIncidents.filter((i) => i.political_sentiment === 'neutral').length;
-    const actionableList = acIncidents.filter((i) => i.is_actionable);
+    
+    // Explicit actionable items OR full list fallback
+    const rawActionable = acIncidents.filter((i) => i.is_actionable);
+    const actionableList = rawActionable.length > 0 ? rawActionable : acIncidents;
 
     const highCount = acIncidents.filter((i) => i.severity === 'High').length;
     const rawScore = (highCount * 35) + (actionableList.length * 25) + (acIncidents.length * 15);
@@ -799,7 +802,7 @@ ${isRulingActive
               const isActionable = incident.is_actionable;
               const mla = getMlaDetails(incident.ac_number);
               const isRulingMla = mla && mla.party === politicalConfig.ruling_party;
-              const acLabel = incident.ac_number ? `AC ${incident.ac_number}: ${incident.constituency}` : `${incident.constituency}`;
+              const acLabel = incident.ac_number ? `AC ${incident.ac_number}: ${incident.constituency}` : (incident.constituency || null);
 
               return (
                 <div
@@ -820,7 +823,7 @@ ${isRulingActive
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isPublic) {
+                            if (!isPublic && acLabel) {
                               setDeepDiveAC(acLabel);
                             }
                           }}
@@ -1417,7 +1420,7 @@ ${isRulingActive
                     </span>
                   </div>
                   <span className="text-[10px] text-slate-400 mt-1 block">
-                    {deepDiveData.actionableList.length} Actionable Issues
+                    {deepDiveData.actionableList.length} Recorded Issues
                   </span>
                 </div>
 
@@ -1434,7 +1437,7 @@ ${isRulingActive
                 </div>
               </div>
 
-              {/* Actionable Flashpoints List */}
+              {/* Actionable Flashpoints List with Fallback */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -1442,7 +1445,7 @@ ${isRulingActive
                     <span>Constituency Ground Flashpoints & Directives</span>
                   </h4>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    {deepDiveData.actionableList.length} Actionable Charges
+                    {deepDiveData.actionableList.length} Ground Incidents
                   </span>
                 </div>
 
@@ -1467,7 +1470,7 @@ ${isRulingActive
 
                   {deepDiveData.actionableList.length === 0 && (
                     <div className="p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                      No high-severity actionable ground charges recorded for this constituency.
+                      No ground incidents recorded for this constituency.
                     </div>
                   )}
                 </div>
