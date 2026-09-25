@@ -23,7 +23,10 @@ import {
   Target,
   AlertTriangle,
   UserCheck,
-  Flame
+  Flame,
+  Lock,
+  Unlock,
+  KeyRound
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -60,6 +63,8 @@ interface MlaInfo {
   party: string;
 }
 
+type UserRole = 'public' | 'admin' | 'candidate';
+
 function MapViewController({ 
   selectedCoord, 
   filterCoord 
@@ -86,6 +91,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
+
+  // Role & Authentication States
+  const [userRole, setUserRole] = useState<UserRole>('public');
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [passcode, setPasscode] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+  const [candidateParty, setCandidateParty] = useState<string>('DMK');
 
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
@@ -179,7 +191,31 @@ export default function App() {
     fetchIncidents();
   }, []);
 
+  const isPublic = userRole === 'public';
   const isRulingActive = warRoomLens === politicalConfig.ruling_party;
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    if (passcode.trim() === 'admin2026') {
+      setUserRole('admin');
+      setShowLoginModal(false);
+      setPasscode('');
+    } else if (passcode.trim() === 'candidate2026') {
+      setUserRole('candidate');
+      setWarRoomLens(candidateParty);
+      setShowLoginModal(false);
+      setPasscode('');
+    } else {
+      setLoginError('Invalid Passcode! (Try "admin2026" or "candidate2026")');
+    }
+  };
+
+  const handleLogout = () => {
+    setUserRole('public');
+    setSelectedPartyFilter(null);
+    setSelectedSentiment('All');
+  };
 
   const getMlaDetails = (ac_number?: number | null) => {
     if (!ac_number) return null;
@@ -207,13 +243,19 @@ export default function App() {
   }, [incidents, selectedDistrict]);
 
   const filteredIncidents = useMemo(() => {
-    const now = new Date('2026-09-22').getTime();
+    const now = new Date('2026-09-26').getTime();
 
     return incidents.filter((inc) => {
+      // 1. PUBLIC RESTRICTION: strictly Today & Yesterday (<= 48 Hours)
+      if (isPublic && inc.incident_date) {
+        const incTime = new Date(inc.incident_date).getTime();
+        const diffDays = (now - incTime) / (1000 * 3600 * 24);
+        if (diffDays > 2) return false;
+      }
+
       const mla = getMlaDetails(inc.ac_number);
 
-      // Party filter hook from StateTallyBar
-      if (selectedPartyFilter && (!mla || mla.party !== selectedPartyFilter)) {
+      if (!isPublic && selectedPartyFilter && (!mla || mla.party !== selectedPartyFilter)) {
         return false;
       }
 
@@ -221,17 +263,17 @@ export default function App() {
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
       const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
       const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
-      const matchSentiment = selectedSentiment === 'All' || inc.political_sentiment === selectedSentiment;
-      const matchActionable = !actionableOnly || inc.is_actionable;
+      const matchSentiment = isPublic || selectedSentiment === 'All' || inc.political_sentiment === selectedSentiment;
+      const matchActionable = isPublic || !actionableOnly || inc.is_actionable;
       const matchSearch =
         searchQuery === '' ||
         inc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         inc.district.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (inc.constituency && inc.constituency.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (inc.strategic_tag && inc.strategic_tag.toLowerCase().includes(searchQuery.toLowerCase()));
+        (!isPublic && inc.strategic_tag && inc.strategic_tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
       let matchTime = true;
-      if (timeFilter !== 'ALL' && inc.incident_date) {
+      if (!isPublic && timeFilter !== 'ALL' && inc.incident_date) {
         const incTime = new Date(inc.incident_date).getTime();
         const diffDays = (now - incTime) / (1000 * 3600 * 24);
         if (timeFilter === '24H') matchTime = diffDays <= 1;
@@ -241,10 +283,11 @@ export default function App() {
 
       return matchDistrict && matchConstituency && matchCategory && matchSentiment && matchActionable && matchSearch && matchTime;
     });
-  }, [incidents, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
+  }, [incidents, isPublic, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
 
-  // Flashpoint detection: identify locations with 5+ incidents in current scope
+  // Flashpoints calculation (only for authorized war room)
   const flashpointCounts = useMemo(() => {
+    if (isPublic) return {};
     const mapCount: Record<string, number> = {};
     filteredIncidents.forEach((inc) => {
       const key = inc.constituency || inc.district;
@@ -253,7 +296,7 @@ export default function App() {
       }
     });
     return mapCount;
-  }, [filteredIncidents]);
+  }, [filteredIncidents, isPublic]);
 
   const activeFlashpoints = useMemo(() => {
     return Object.entries(flashpointCounts).filter(([_, count]) => count >= 5);
@@ -365,67 +408,112 @@ ${isRulingActive
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-lg tracking-tight text-white">FonsOS</h1>
-              <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {politicalConfig.election_cycle} ELECTORAL INTEL
+              <span className={`text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded border ${
+                isPublic 
+                  ? 'bg-slate-800 text-slate-300 border-slate-700' 
+                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+              }`}>
+                {isPublic ? 'TN HYPERLOCAL FEED' : `${politicalConfig.election_cycle} WAR-ROOM INTEL`}
               </span>
             </div>
-            <p className="text-xs text-slate-400">Incident Intelligence, Rapid Rebuttal & Constituency Micro-Mapping</p>
+            <p className="text-xs text-slate-400">
+              {isPublic 
+                ? 'Tamil Nadu 234 Constituencies - Verified 48-Hour News & Issues' 
+                : 'Incident Intelligence, Rapid Rebuttal & Constituency Micro-Mapping'}
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg p-0.5 text-xs">
-            {(['ALL', '24H', '7D', '30D'] as const).map((period) => (
-              <button
-                key={period}
-                onClick={() => setTimeFilter(period)}
-                className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
-                  timeFilter === period 
-                    ? 'bg-amber-500 text-slate-950 shadow-sm' 
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {period}
-              </button>
-            ))}
-          </div>
+          {/* Public Badge vs Time Scope */}
+          {isPublic ? (
+            <div className="bg-slate-950/80 border border-slate-800 px-3 py-1 rounded-lg text-[11px] font-medium text-amber-400 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live: Last 48 Hours
+            </div>
+          ) : (
+            <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg p-0.5 text-xs">
+              {(['ALL', '24H', '7D', '30D'] as const).map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setTimeFilter(period)}
+                  className={`px-2 py-1 rounded text-[11px] font-semibold transition-all cursor-pointer ${
+                    timeFilter === period 
+                      ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-slate-400 mr-2">Lens:</span>
-            <select
-              value={warRoomLens}
-              onChange={(e) => setWarRoomLens(e.target.value)}
-              className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer"
+          {/* War-Room Lens Selector (Authorized Only) */}
+          {!isPublic && (
+            <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
+              <span className="text-slate-400 mr-2">Lens:</span>
+              {userRole === 'admin' ? (
+                <select
+                  value={warRoomLens}
+                  onChange={(e) => setWarRoomLens(e.target.value)}
+                  className="bg-transparent text-amber-400 font-semibold focus:outline-none cursor-pointer"
+                >
+                  <optgroup label="Ruling Lens" className="bg-slate-900 text-slate-400">
+                    <option value={politicalConfig.ruling_party} className="bg-slate-900 text-amber-300">
+                      {politicalConfig.ruling_party} (Ruling)
+                    </option>
+                  </optgroup>
+                  <optgroup label="Opposition Lenses" className="bg-slate-900 text-slate-400">
+                    {politicalConfig.opposition_parties.map((party) => (
+                      <option key={party} value={party} className="bg-slate-900 text-slate-100">
+                        {party} (Opposition)
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Challenger / Third Front" className="bg-slate-900 text-slate-400">
+                    <option value="THIRD_FRONT" className="bg-slate-900 text-indigo-300">
+                      Third Front (Challenger)
+                    </option>
+                  </optgroup>
+                </select>
+              ) : (
+                <span className="text-amber-400 font-bold">{warRoomLens} (Candidate View)</span>
+              )}
+            </div>
+          )}
+
+          {/* AI Executive Brief (Authorized Only) */}
+          {!isPublic && (
+            <button
+              onClick={handleGenerateExecutiveBrief}
+              disabled={generatingBrief}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all cursor-pointer"
+              title="Generate Synthesized AI War-Room Briefing"
             >
-              <optgroup label="Ruling Lens" className="bg-slate-900 text-slate-400">
-                <option value={politicalConfig.ruling_party} className="bg-slate-900 text-amber-300">
-                  {politicalConfig.ruling_party} (Ruling)
-                </option>
-              </optgroup>
-              <optgroup label="Opposition Lenses" className="bg-slate-900 text-slate-400">
-                {politicalConfig.opposition_parties.map((party) => (
-                  <option key={party} value={party} className="bg-slate-900 text-slate-100">
-                    {party} (Opposition)
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="Challenger / Third Front" className="bg-slate-900 text-slate-400">
-                <option value="THIRD_FRONT" className="bg-slate-900 text-indigo-300">
-                  Third Front (Challenger)
-                </option>
-              </optgroup>
-            </select>
-          </div>
+              {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <BrainCircuit size={14} />}
+              <span>{dossierCopied ? 'Briefing Copied!' : 'AI Executive Brief'}</span>
+            </button>
+          )}
 
-          <button
-            onClick={handleGenerateExecutiveBrief}
-            disabled={generatingBrief}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all cursor-pointer"
-            title="Generate Synthesized AI War-Room Briefing"
-          >
-            {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <BrainCircuit size={14} />}
-            <span>{dossierCopied ? 'Briefing Copied!' : 'AI Executive Brief'}</span>
-          </button>
+          {/* Login / Logout Switcher */}
+          {isPublic ? (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer shadow-md"
+            >
+              <KeyRound size={14} />
+              <span>War-Room Login</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-300 hover:bg-rose-900/60 transition-all cursor-pointer"
+            >
+              <Unlock size={14} />
+              <span>Exit War-Room</span>
+            </button>
+          )}
 
           <button
             onClick={() => {
@@ -441,42 +529,46 @@ ${isRulingActive
         </div>
       </header>
 
-      {/* Tactical Banner */}
-      <div
-        className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
-          isRulingActive
-            ? 'bg-amber-950/40 border-amber-800/50 text-amber-300'
-            : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          {isRulingActive ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
-          <span>
-            {isRulingActive
-              ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Field Remediation`
-              : warRoomLens === 'THIRD_FRONT'
-              ? 'THIRD FRONT / CHALLENGER LENS ACTIVE | Anti-Establishment Vulnerability Exposure'
-              : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Ground Charges`}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          {activeFlashpoints.length > 0 && (
-            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 flex items-center gap-1 animate-pulse">
-              <Flame size={11} />
-              🚨 {activeFlashpoints.length} Flashpoint Spike{activeFlashpoints.length > 1 ? 's' : ''} (5+ Incidents)
+      {/* Tactical Banner (War-Room Only) */}
+      {!isPublic && (
+        <div
+          className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
+            isRulingActive
+              ? 'bg-amber-950/40 border-amber-800/50 text-amber-300'
+              : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {isRulingActive ? <ShieldCheck size={15} /> : <span className="text-sm">🔥</span>}
+            <span>
+              {isRulingActive
+                ? `${politicalConfig.ruling_party} RULING LENS ACTIVE | Rapid Response, Fact-Check & Field Remediation`
+                : warRoomLens === 'THIRD_FRONT'
+                ? 'THIRD FRONT / CHALLENGER LENS ACTIVE | Anti-Establishment Vulnerability Exposure'
+                : `${warRoomLens} OPPOSITION LENS ACTIVE | Anti-Incumbency Flashpoints & Ground Charges`}
             </span>
-          )}
-          <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
-            {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
-          </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {activeFlashpoints.length > 0 && (
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 flex items-center gap-1 animate-pulse">
+                <Flame size={11} />
+                🚨 {activeFlashpoints.length} Flashpoint Spike{activeFlashpoints.length > 1 ? 's' : ''} (5+ Incidents)
+              </span>
+            )}
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
+              {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Dynamic 234 Assembly Seat Share Tally Bar */}
-      <StateTallyBar
-        selectedParty={selectedPartyFilter}
-        onSelectParty={(party) => setSelectedPartyFilter(party)}
-      />
+      {/* Dynamic 234 Assembly Seat Share Tally Bar (War-Room Only) */}
+      {!isPublic && (
+        <StateTallyBar
+          selectedParty={selectedPartyFilter}
+          onSelectParty={(party) => setSelectedPartyFilter(party)}
+        />
+      )}
 
       {/* Main Workspace */}
       <div className="flex flex-1 relative overflow-hidden">
@@ -487,7 +579,7 @@ ${isRulingActive
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input
                 type="text"
-                placeholder="Search district, AC, charges, keywords..."
+                placeholder={isPublic ? "Search Tamil Nadu news, AC, district..." : "Search district, AC, charges, keywords..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 bg-slate-950/80 border border-slate-700 rounded-md text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
@@ -519,7 +611,7 @@ ${isRulingActive
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 items-center">
+            <div className={`grid ${isPublic ? 'grid-cols-1' : 'grid-cols-2'} gap-2 items-center`}>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -530,45 +622,49 @@ ${isRulingActive
                 ))}
               </select>
 
-              <select
-                value={selectedSentiment}
-                onChange={(e) => setSelectedSentiment(e.target.value)}
-                className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
-              >
-                <option value="All" className="bg-slate-900">All Sentiments</option>
-                <option value="anti_incumbency" className="bg-slate-900">⚡ Anti-Incumbency</option>
-                <option value="ruling_defense" className="bg-slate-900">🛡️ Ruling Counter</option>
-                <option value="neutral" className="bg-slate-900">🏛️ Civic Neutral</option>
-              </select>
-            </div>
-
-            <div className="pt-1 flex items-center justify-between">
-              <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={actionableOnly}
-                  onChange={(e) => setActionableOnly(e.target.checked)}
-                  className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer"
-                />
-                Actionable Ground Flashpoints Only
-              </label>
-              {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter) && (
-                <button
-                  onClick={() => {
-                    setSelectedDistrict('All');
-                    setSelectedConstituency('All');
-                    setSelectedCategory('All');
-                    setSelectedSentiment('All');
-                    setSelectedPartyFilter(null);
-                    setActionableOnly(false);
-                    setSearchQuery('');
-                  }}
-                  className="text-[10px] text-amber-400 hover:underline cursor-pointer"
+              {!isPublic && (
+                <select
+                  value={selectedSentiment}
+                  onChange={(e) => setSelectedSentiment(e.target.value)}
+                  className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-amber-300 font-medium focus:outline-none focus:border-amber-500"
                 >
-                  Reset Filters
-                </button>
+                  <option value="All" className="bg-slate-900">All Sentiments</option>
+                  <option value="anti_incumbency" className="bg-slate-900">⚡ Anti-Incumbency</option>
+                  <option value="ruling_defense" className="bg-slate-900">🛡️ Ruling Counter</option>
+                  <option value="neutral" className="bg-slate-900">🏛️ Civic Neutral</option>
+                </select>
               )}
             </div>
+
+            {!isPublic && (
+              <div className="pt-1 flex items-center justify-between">
+                <label className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={actionableOnly}
+                    onChange={(e) => setActionableOnly(e.target.checked)}
+                    className="rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer"
+                  />
+                  Actionable Ground Flashpoints Only
+                </label>
+                {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter) && (
+                  <button
+                    onClick={() => {
+                      setSelectedDistrict('All');
+                      setSelectedConstituency('All');
+                      setSelectedCategory('All');
+                      setSelectedSentiment('All');
+                      setSelectedPartyFilter(null);
+                      setActionableOnly(false);
+                      setSearchQuery('');
+                    }}
+                    className="text-[10px] text-amber-400 hover:underline cursor-pointer"
+                  >
+                    Reset Filters
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Cards List */}
@@ -584,7 +680,7 @@ ${isRulingActive
                   key={incident.id}
                   onClick={() => {
                     setSelectedIncident(incident);
-                    setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
+                    setActiveTab(isPublic ? 'details' : (isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details'));
                   }}
                   className={`p-3 rounded-lg cursor-pointer transition-all border ${
                     isSelected
@@ -605,56 +701,60 @@ ${isRulingActive
                         </span>
                       )}
 
-                      {/* Tactical MLA Alert Badges */}
-                      {mla && !isRulingActive && isRulingMla && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1">
-                          <Target size={10} />
-                          Target Strike
-                        </span>
-                      )}
+                      {/* Strategic Badges only visible in War Room */}
+                      {!isPublic && (
+                        <>
+                          {mla && !isRulingActive && isRulingMla && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1">
+                              <Target size={10} />
+                              Target Strike
+                            </span>
+                          )}
 
-                      {mla && isRulingActive && isRulingMla && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
-                          <AlertTriangle size={10} />
-                          Damage Control
-                        </span>
-                      )}
+                          {mla && isRulingActive && isRulingMla && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                              <AlertTriangle size={10} />
+                              Damage Control
+                            </span>
+                          )}
 
-                      {incident.political_sentiment === 'anti_incumbency' && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          isRulingActive
-                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-                            : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                        }`}>
-                          {isRulingActive ? '⚠️ Governance Vulnerability' : '⚡ Anti-Incumbency'}
-                        </span>
-                      )}
-                      {incident.political_sentiment === 'ruling_defense' && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
-                          isRulingActive
-                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-300 border-slate-700'
-                        }`}>
-                          {isRulingActive ? '✅ Scheme Delivery' : '🛡️ Ruling Counter'}
-                        </span>
-                      )}
-                      {incident.political_sentiment === 'neutral' && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
-                          🏛️ Civic Neutral
-                        </span>
-                      )}
+                          {incident.political_sentiment === 'anti_incumbency' && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              isRulingActive
+                                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                                : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            }`}>
+                              {isRulingActive ? '⚠️ Governance Vulnerability' : '⚡ Anti-Incumbency'}
+                            </span>
+                          )}
+                          {incident.political_sentiment === 'ruling_defense' && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
+                              isRulingActive
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                : 'bg-slate-800 text-slate-300 border-slate-700'
+                            }`}>
+                              {isRulingActive ? '✅ Scheme Delivery' : '🛡️ Ruling Counter'}
+                            </span>
+                          )}
+                          {incident.political_sentiment === 'neutral' && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                              🏛️ Civic Neutral
+                            </span>
+                          )}
 
-                      {isActionable && (
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
-                            isRulingActive
-                              ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
-                          }`}
-                        >
-                          <Sparkles size={10} />
-                          {isRulingActive ? 'REBUTTAL' : 'CHARGE'}
-                        </span>
+                          {isActionable && (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
+                                isRulingActive
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                              }`}
+                            >
+                              <Sparkles size={10} />
+                              {isRulingActive ? 'REBUTTAL' : 'CHARGE'}
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
                     <span className="text-[10px] text-slate-500 whitespace-nowrap">{incident.incident_date}</span>
@@ -666,7 +766,7 @@ ${isRulingActive
 
                   <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800/40 text-[11px] text-slate-400">
                     <span className="flex items-center gap-1">📍 {incident.district}</span>
-                    {mla ? (
+                    {!isPublic && mla ? (
                       <span className="text-[10px] font-medium text-slate-300 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
                         MLA: {mla.mla_name} ({mla.party})
                       </span>
@@ -680,7 +780,9 @@ ${isRulingActive
 
             {filteredIncidents.length === 0 && (
               <div className="p-8 text-center text-xs text-slate-500">
-                No incidents match your selected filters.
+                {isPublic 
+                  ? 'No news records found for the last 48 hours in this filter.' 
+                  : 'No incidents match your selected filters.'}
               </div>
             )}
           </div>
@@ -708,17 +810,18 @@ ${isRulingActive
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
               const placeKey = incident.constituency || incident.district;
-              const isFlashpoint = placeKey && (flashpointCounts[placeKey] || 0) >= 5;
+              const isFlashpoint = !isPublic && placeKey && (flashpointCounts[placeKey] || 0) >= 5;
 
-              const color = isActionable
-                ? isRulingActive
-                  ? '#f59e0b'
-                  : '#ef4444'
-                : '#10b981';
+              // In public mode, use neutral calm colors
+              const color = isPublic 
+                ? '#38bdf8' 
+                : (isActionable 
+                    ? (isRulingActive ? '#f59e0b' : '#ef4444') 
+                    : '#10b981');
 
               return (
                 <div key={incident.id}>
-                  {/* Heat Intensity Outer Pulsing Circle for Flashpoints */}
+                  {/* Heat Intensity Outer Pulsing Circle only in War-Room */}
                   {isFlashpoint && (
                     <CircleMarker
                       center={[incident.latitude, incident.longitude]}
@@ -745,7 +848,7 @@ ${isRulingActive
                     eventHandlers={{
                       click: () => {
                         setSelectedIncident(incident);
-                        setActiveTab(isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details');
+                        setActiveTab(isPublic ? 'details' : (isActionable ? (isRulingActive ? 'defense' : 'attack') : 'details'));
                       },
                     }}
                   >
@@ -760,7 +863,7 @@ ${isRulingActive
                             🚨 Flashpoint Hotspot ({flashpointCounts[placeKey]} issues in area)
                           </div>
                         )}
-                        {incident.strategic_tag && (
+                        {!isPublic && incident.strategic_tag && (
                           <div className="text-[10px] font-semibold text-indigo-600">
                             {incident.strategic_tag}
                           </div>
@@ -801,6 +904,7 @@ ${isRulingActive
               </button>
             </div>
 
+            {/* Drawer Tabs */}
             <div className="flex border-b border-slate-800 bg-slate-950/40 text-xs font-semibold">
               <button
                 onClick={() => setActiveTab('details')}
@@ -810,37 +914,58 @@ ${isRulingActive
                     : 'border-transparent text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Details
+                Overview
               </button>
-              <button
-                onClick={() => setActiveTab('attack')}
-                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'attack'
-                    ? 'border-rose-500 text-rose-400 bg-rose-500/10'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <span>🔥</span>
-                Attack Angle
-              </button>
-              <button
-                onClick={() => setActiveTab('defense')}
-                className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeTab === 'defense'
-                    ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
-                    : 'border-transparent text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                <ShieldCheck size={13} />
-                Defense Rebuttal
-              </button>
+
+              {/* In Public mode, show locked placeholder */}
+              {isPublic ? (
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex-1 py-2.5 text-center border-b-2 border-transparent text-slate-500 hover:text-amber-400 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Lock size={12} />
+                  <span>War-Room Playbook</span>
+                </button>
+              ) : (
+                <>
+                  {/* Attack tab: visible for Admin or Opposition Candidates */}
+                  {(userRole === 'admin' || (userRole === 'candidate' && warRoomLens !== politicalConfig.ruling_party)) && (
+                    <button
+                      onClick={() => setActiveTab('attack')}
+                      className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        activeTab === 'attack'
+                          ? 'border-rose-500 text-rose-400 bg-rose-500/10'
+                          : 'border-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>🔥</span>
+                      Attack Angle
+                    </button>
+                  )}
+
+                  {/* Defense tab: visible for Admin or Ruling Candidates */}
+                  {(userRole === 'admin' || (userRole === 'candidate' && warRoomLens === politicalConfig.ruling_party)) && (
+                    <button
+                      onClick={() => setActiveTab('defense')}
+                      className={`flex-1 py-2.5 text-center border-b-2 transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        activeTab === 'defense'
+                          ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10'
+                          : 'border-transparent text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <ShieldCheck size={13} />
+                      Defense Rebuttal
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
-                  {/* Dynamic MLA Box */}
-                  {selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
+                  {/* Dynamic MLA Box (War-Room only) */}
+                  {!isPublic && selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
                         <div className="p-2 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400">
@@ -861,8 +986,8 @@ ${isRulingActive
                     </div>
                   )}
 
-                  {/* 100% INLINE ANTI-INCUMBENCY VULNERABILITY METER */}
-                  {(() => {
+                  {/* Anti-Incumbency Vulnerability Meter (War-Room only) */}
+                  {!isPublic && (() => {
                     const acIncidents = filteredIncidents.filter(
                       (i) =>
                         (selectedIncident.ac_number && Number(i.ac_number) === Number(selectedIncident.ac_number)) ||
@@ -872,7 +997,6 @@ ${isRulingActive
                     const highCount = acIncidents.filter((i) => i.severity === 'High').length;
                     const actionableCount = acIncidents.filter((i) => i.is_actionable).length;
 
-                    // Standard robust scoring formula
                     const rawScore = (highCount * 35) + (actionableCount * 25) + (count * 15);
                     const score = Math.min(100, Math.max(25, rawScore));
                     const isSevere = score >= 65;
@@ -898,7 +1022,6 @@ ${isRulingActive
                           </span>
                         </div>
 
-                        {/* Progress Bar */}
                         <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
                           <div
                             className={`h-full transition-all duration-500 rounded-full ${
@@ -947,10 +1070,29 @@ ${isRulingActive
                       <span className="font-semibold text-slate-200">{selectedIncident.district}</span>
                     </div>
                   </div>
+
+                  {/* Public Call-to-Action Card */}
+                  {isPublic && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                        <Lock size={14} />
+                        <span>Political & Campaign Intelligence Protected</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Opposition attack charge-sheets, ruling counter-rebuttals, and micro-constituency vulnerability scores are restricted to authorized campaign war-room units.
+                      </p>
+                      <button
+                        onClick={() => setShowLoginModal(true)}
+                        className="w-full py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all cursor-pointer"
+                      >
+                        Authorize War-Room Session
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {activeTab === 'attack' && (
+              {!isPublic && activeTab === 'attack' && (
                 <div className="space-y-4">
                   <div className="p-3 bg-rose-950/30 border border-rose-800/40 rounded-lg">
                     <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block mb-1">
@@ -997,7 +1139,7 @@ ${isRulingActive
                 </div>
               )}
 
-              {activeTab === 'defense' && (
+              {!isPublic && activeTab === 'defense' && (
                 <div className="space-y-4">
                   <div className="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-lg">
                     <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block mb-1">
@@ -1059,6 +1201,100 @@ ${isRulingActive
           </div>
         )}
       </div>
+
+      {/* War-Room Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setShowLoginModal(false);
+                setLoginError('');
+                setPasscode('');
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400">
+                <KeyRound size={22} />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-white">War-Room Access Gateway</h3>
+                <p className="text-xs text-slate-400">Restricted to authorized campaign strategists & candidates</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Candidate Party Affiliation (for candidate passcodes)
+                </label>
+                <select
+                  value={candidateParty}
+                  onChange={(e) => setCandidateParty(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="DMK">DMK</option>
+                  <option value="AIADMK">AIADMK</option>
+                  <option value="TVK">TVK</option>
+                  <option value="INC">Congress</option>
+                  <option value="PMK">PMK</option>
+                  <option value="BJP">BJP</option>
+                  <option value="THIRD_FRONT">Third Front / Independent</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Security Passcode
+                </label>
+                <input
+                  type="password"
+                  placeholder="Enter passcode (e.g. admin2026 or candidate2026)"
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  autoFocus
+                />
+              </div>
+
+              {loginError && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
+                  {loginError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLoginModal(false);
+                    setLoginError('');
+                    setPasscode('');
+                  }}
+                  className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-xs font-bold text-slate-950 transition-all cursor-pointer shadow-md"
+                >
+                  Unlock War-Room
+                </button>
+              </div>
+            </form>
+
+            <div className="text-[10px] text-slate-500 border-t border-slate-800 pt-3 flex justify-between">
+              <span>Admin: <code>admin2026</code></span>
+              <span>Candidate: <code>candidate2026</code></span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
