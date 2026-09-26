@@ -32,7 +32,9 @@ import {
   BarChart3,
   Printer,
   PieChart,
-  TrendingUp
+  TrendingUp,
+  PlusCircle,
+  Send
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -111,6 +113,23 @@ export default function App() {
   // Constituency Deep Dive Modal State
   const [deepDiveAC, setDeepDiveAC] = useState<string | null>(null);
   const [dossierExportCopied, setDossierExportCopied] = useState<boolean>(false);
+
+  // Ground Report Submission Modal State
+  const [showReportModal, setShowReportModal] = useState<boolean>(false);
+  const [submittingReport, setSubmittingReport] = useState<boolean>(false);
+  const [reportSuccess, setReportSuccess] = useState<boolean>(false);
+  const [reportForm, setReportForm] = useState({
+    title: '',
+    summary: '',
+    district: 'Chennai',
+    constituency: '',
+    category: 'Civic Grievance',
+    severity: 'Medium' as 'High' | 'Medium' | 'Low',
+    source_outlet: 'Ground Cadre Dispatch',
+    proof_url: '',
+    political_sentiment: 'anti_incumbency' as 'anti_incumbency' | 'ruling_defense' | 'neutral',
+    is_actionable: true
+  });
 
   const [politicalConfig, setPoliticalConfig] = useState<PoliticalConfig>({
     ruling_party: 'TVK',
@@ -581,6 +600,69 @@ ${isRulingActive
     setTimeout(() => setDossierCopied(false), 2500);
   };
 
+  // Submit Cadre Ground Report
+  const handleSubmitGroundReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportForm.title || !reportForm.summary) return;
+
+    setSubmittingReport(true);
+    try {
+      // Find matching coordinate if exists
+      const matchedDistrictIncident = incidents.find((i) => i.district === reportForm.district && i.latitude && i.longitude);
+      const lat = matchedDistrictIncident?.latitude || 11.1271;
+      const lng = matchedDistrictIncident?.longitude || 78.6569;
+
+      const payload = {
+        title: reportForm.title.trim(),
+        summary: reportForm.summary.trim(),
+        district: reportForm.district,
+        constituency: reportForm.constituency ? reportForm.constituency.trim() : null,
+        category: reportForm.category,
+        severity: reportForm.severity,
+        source_outlet: reportForm.source_outlet,
+        proof_url: reportForm.proof_url.trim() || 'https://civicmatrix.in',
+        incident_date: new Date().toISOString().split('T')[0],
+        latitude: lat,
+        longitude: lng,
+        political_sentiment: reportForm.political_sentiment,
+        is_actionable: reportForm.is_actionable,
+        attack_angle: `${reportForm.constituency || reportForm.district}-ல் அரசு நிர்வாக மெத்தனத்தால் மக்கள் பாதிப்பு. உடனடி தீர்வு தேவை.`,
+        defense_angle: `இப்பிரச்சனை குறித்து கள அதிகாரிகள் மூலம் உடனடி நடவடிக்கை எடுக்கப்பட்டு வருகிறது.`
+      };
+
+      const { data, error } = await supabase.from('incidents').insert([payload]).select();
+
+      if (error) throw error;
+
+      setReportSuccess(true);
+      setTimeout(() => {
+        setReportSuccess(false);
+        setShowReportModal(false);
+        setReportForm({
+          title: '',
+          summary: '',
+          district: 'Chennai',
+          constituency: '',
+          category: 'Civic Grievance',
+          severity: 'Medium',
+          source_outlet: 'Ground Cadre Dispatch',
+          proof_url: '',
+          political_sentiment: 'anti_incumbency',
+          is_actionable: true
+        });
+      }, 1500);
+
+      if (data && data[0]) {
+        setIncidents((prev) => [data[0] as Incident, ...prev]);
+      }
+    } catch (err) {
+      console.error('Error submitting ground incident:', err);
+      alert('Failed to submit ground incident. Please check console.');
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Realtime Alert Notification Toast */}
@@ -621,6 +703,16 @@ ${isRulingActive
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Ground Cadre Report Button */}
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/30 transition-all cursor-pointer shadow-sm"
+            title="Dispatch Ground Cadre Incident / Grievance"
+          >
+            <PlusCircle size={14} />
+            <span>Ground Report</span>
+          </button>
+
           {/* Deep Dive Action Button (If AC is Selected in filter) */}
           {selectedConstituency !== 'All' && !isPublic && (
             <button
@@ -1464,6 +1556,165 @@ ${isRulingActive
           </div>
         )}
       </div>
+
+      {/* Ground Cadre Grievance Submission Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
+            <div className="p-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+                  <PlusCircle size={20} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Ground Cadre Incident Dispatch</h3>
+                  <p className="text-[11px] text-slate-400">Directly ingest verified local issue into war-room intelligence</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitGroundReport} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Issue Title / Headline *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. குடிநீர் குழாய் உடைந்து சாலை சேதம் - பொதுமக்கள் மறியல்"
+                  value={reportForm.title}
+                  onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    District *
+                  </label>
+                  <select
+                    value={reportForm.district}
+                    onChange={(e) => setReportForm({ ...reportForm, district: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    {districtList.filter((d) => d !== 'All').map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Assembly Constituency
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Madurai Central"
+                    value={reportForm.constituency}
+                    onChange={(e) => setReportForm({ ...reportForm, constituency: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={reportForm.category}
+                    onChange={(e) => setReportForm({ ...reportForm, category: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Civic Grievance">Civic Grievance</option>
+                    <option value="Governance">Governance</option>
+                    <option value="Law & Order">Law & Order</option>
+                    <option value="Public Health">Public Health</option>
+                    <option value="Infrastructure">Infrastructure</option>
+                    <option value="Education">Education</option>
+                    <option value="Agriculture">Agriculture</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                    Severity Level
+                  </label>
+                  <select
+                    value={reportForm.severity}
+                    onChange={(e) => setReportForm({ ...reportForm, severity: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="High">High (Immediate Flashpoint)</option>
+                    <option value="Medium">Medium (Ward Level)</option>
+                    <option value="Low">Low (General Observation)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Ground Details & Grievance Summary *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="விவரங்கள் மற்றும் கள நிலவரம்..."
+                  value={reportForm.summary}
+                  onChange={(e) => setReportForm({ ...reportForm, summary: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
+                  Proof Link / Photo URL / News Report
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://... (Optional)"
+                  value={reportForm.proof_url}
+                  onChange={(e) => setReportForm({ ...reportForm, proof_url: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {reportSuccess && (
+                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+                  <Check size={16} />
+                  <span>Ground incident ingested into live feed successfully!</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(false)}
+                  className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingReport || reportSuccess}
+                  className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                >
+                  {submittingReport ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                  <span>{submittingReport ? 'Dispatching...' : 'Dispatch Issue'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Constituency Deep Dive & Dossier Export Modal */}
       {deepDiveAC && deepDiveData && (
