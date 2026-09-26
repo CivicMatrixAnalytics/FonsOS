@@ -552,15 +552,32 @@ export default function App() {
   // Deep Dive AC Target Context Extraction with Smart Fallback & Category Breakdown
   const deepDiveData = useMemo(() => {
     if (!deepDiveAC) return null;
+
+    // Clean target name: Handles "AC 197: Usilampatti" or "Usilampatti"
+    const targetClean = deepDiveAC.includes(':') 
+      ? deepDiveAC.split(':')[1].trim().toLowerCase() 
+      : deepDiveAC.trim().toLowerCase();
+
+    // Match incidents by exact name, sub-string, or AC label
     const acIncidents = incidents.filter((i) => {
-      const label = i.ac_number ? `AC ${i.ac_number}: ${i.constituency}` : i.constituency;
-      return label === deepDiveAC || i.constituency === deepDiveAC;
+      if (!i.constituency) return false;
+      const cName = i.constituency.trim().toLowerCase();
+      const label = i.ac_number ? `AC ${i.ac_number}: ${i.constituency}`.toLowerCase() : cName;
+      return cName === targetClean || label === deepDiveAC.toLowerCase() || cName.includes(targetClean) || targetClean.includes(cName);
     });
 
     const sample = acIncidents[0] || null;
-    const acNum = sample?.ac_number || null;
-    const mla = getMlaDetails(acNum);
+    let acNum = sample?.ac_number || null;
 
+    // Fallback AC number extraction from deepDiveAC string if available
+    if (!acNum && deepDiveAC.includes('AC ')) {
+      const match = deepDiveAC.match(/AC\s+(\d+)/i);
+      if (match && match[1]) {
+        acNum = Number(match[1]);
+      }
+    }
+
+    const mla = getMlaDetails(acNum);
     const antiCount = acIncidents.filter((i) => i.political_sentiment === 'anti_incumbency').length;
     const defCount = acIncidents.filter((i) => i.political_sentiment === 'ruling_defense').length;
     const neutralCount = acIncidents.filter((i) => i.political_sentiment === 'neutral').length;
@@ -582,7 +599,7 @@ export default function App() {
 
     const highCount = acIncidents.filter((i) => i.severity === 'High').length;
     const rawScore = (highCount * 35) + (actionableList.length * 25) + (acIncidents.length * 15);
-    const score = Math.min(100, Math.max(25, rawScore));
+    const score = acIncidents.length > 0 ? Math.min(100, Math.max(25, rawScore)) : 20;
 
     return {
       acName: deepDiveAC,
@@ -954,9 +971,9 @@ ${isRulingActive
 
   const onEachGeoFeature = (feature: any, layer: any) => {
     const props = feature?.properties || {};
-    const rawAcName = props.ac_name || props.AC_NAME || props.NAME || 'Constituency';
+    const rawAcName = (props.ac_name || props.AC_NAME || props.NAME || '').trim();
     const acNum = props.ac_no || props.AC_NO || '';
-    const cleanKey = rawAcName.trim().toLowerCase();
+    const cleanKey = rawAcName.toLowerCase();
     const acData = acScoreLookup[cleanKey];
 
     const label = acNum ? `AC ${acNum}: ${rawAcName}` : rawAcName;
@@ -975,9 +992,8 @@ ${isRulingActive
         l.setStyle(getChoroplethStyle(feature));
       },
       click: () => {
-        if (!isPublic) {
-          setDeepDiveAC(label);
-        }
+        // Direct click trigger with full label format matching deepDiveAC
+        setDeepDiveAC(label);
       }
     });
 
@@ -2222,6 +2238,11 @@ ${isRulingActive
                       </p>
                     </div>
                   ))}
+                  {deepDiveData.actionableList.length === 0 && (
+                    <div className="p-5 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                      No critical field flashpoints recorded for this assembly seat.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
