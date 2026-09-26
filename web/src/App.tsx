@@ -29,7 +29,9 @@ import {
   KeyRound,
   Radio,
   FileText,
-  BarChart3
+  BarChart3,
+  Printer,
+  PieChart
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -360,7 +362,7 @@ export default function App() {
     return null;
   }, [selectedDistrict, selectedConstituency, filteredIncidents]);
 
-  // Deep Dive AC Target Context Extraction with Smart Fallback
+  // Deep Dive AC Target Context Extraction with Smart Fallback & Category Breakdown
   const deepDiveData = useMemo(() => {
     if (!deepDiveAC) return null;
     const acIncidents = incidents.filter((i) => {
@@ -380,6 +382,19 @@ export default function App() {
     const rawActionable = acIncidents.filter((i) => i.is_actionable);
     const actionableList = rawActionable.length > 0 ? rawActionable : acIncidents;
 
+    // Civic Category Breakdown
+    const catMap: Record<string, number> = {};
+    acIncidents.forEach((item) => {
+      catMap[item.category] = (catMap[item.category] || 0) + 1;
+    });
+    const categoryBreakdown = Object.entries(catMap)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percent: Math.round((count / (acIncidents.length || 1)) * 100)
+      }))
+      .sort((a, b) => b.count - a.count);
+
     const highCount = acIncidents.filter((i) => i.severity === 'High').length;
     const rawScore = (highCount * 35) + (actionableList.length * 25) + (acIncidents.length * 15);
     const score = Math.min(100, Math.max(25, rawScore));
@@ -394,6 +409,7 @@ export default function App() {
       defCount,
       neutralCount,
       actionableList,
+      categoryBreakdown,
       score,
       allIncidents: acIncidents
     };
@@ -408,6 +424,10 @@ export default function App() {
   const handleExportACDossier = () => {
     if (!deepDiveData) return;
     const mlaStr = deepDiveData.mla ? `${deepDiveData.mla.mla_name} (${deepDiveData.mla.party})` : 'Unassigned';
+
+    const catSummary = deepDiveData.categoryBreakdown
+      .map((c) => `- ${c.name}: ${c.percent}% (${c.count} cases)`)
+      .join('\n');
 
     const issues = deepDiveData.actionableList.map((item, idx) => {
       return `${idx + 1}. [${item.category}] ${item.title}\n   Charge: ${item.attack_angle || item.summary}\n   Proof: ${item.proof_url}`;
@@ -428,10 +448,13 @@ I. STRATEGIC VULNERABILITY METRIC:
 - Ruling Defense / Remediation Events: ${deepDiveData.defCount}
 - Neutral Civic Observations: ${deepDiveData.neutralCount}
 
-II. TOP ACTIONABLE FIELD CHARGES & GROUND FLASHPOINTS:
-${issues || 'No high-priority actionable ground charges currently recorded for this assembly seat.'}
+II. TOP CIVIC GRIEVANCE CLUSTERS:
+${catSummary || 'None documented'}
 
-III. RECOMMENDED FIELD CAMPAIGN DIRECTIVE:
+III. ACTIONABLE CHARGE-SHEET & INCIDENT DOSSIER:
+${issues || 'No ground charges currently recorded for this assembly seat.'}
+
+IV. RECOMMENDED FIELD CAMPAIGN DIRECTIVE:
 ${isRulingActive 
   ? `Mobilize local constituency observers to expedite grievance redressal across affected wards. Neutralize localized opposition narratives with documented welfare delivery proofs.`
   : `Direct booth-level campaign teams to distribute localized charge-sheets highlighting administrative failure of sitting MLA ${mlaStr}. Focus door-to-door campaigning on civic grievances.`}
@@ -440,6 +463,30 @@ ${isRulingActive
     navigator.clipboard.writeText(dossierText);
     setDossierExportCopied(true);
     setTimeout(() => setDossierExportCopied(false), 2500);
+  };
+
+  const handleWhatsAppBatchDispatch = () => {
+    if (!deepDiveData) return;
+    const mlaStr = deepDiveData.mla ? `${deepDiveData.mla.mla_name} (${deepDiveData.mla.party})` : 'Unassigned';
+    const topIssues = deepDiveData.actionableList.slice(0, 3).map((item, idx) => {
+      return `${idx + 1}. *[${item.category}]* ${item.title}`;
+    }).join('\n');
+
+    const msg = `🚨 *[FONS-OS BOOTH BULLETIN - ${deepDiveData.acName}]*
+📍 *மாவட்டம்:* ${deepDiveData.district}
+👤 *நடப்பு எம்.எல்.ஏ:* ${mlaStr}
+⚡ *எதிர்ப்பு நிலை (Vulnerability):* ${deepDiveData.score}/100 [${deepDiveData.score >= 65 ? 'SEVERE' : 'MODERATE'}]
+
+🔥 *கள முக்கிய பிரச்சனைகள் (Top Flashpoints):*
+${topIssues}
+
+📢 *களப்பணி உத்தரவு:*
+பூத் வாரியாக மக்கள் சந்திப்பில் இப்பிரச்சனைகளை முன்வைத்து பிரசாரம் செய்யவும்!
+============================
+_Civic Matrix Analytics War-Room_`;
+
+    const encoded = encodeURIComponent(msg);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
   const handleWhatsAppShare = (incident: Incident, type: 'attack' | 'defense') => {
@@ -886,8 +933,8 @@ ${isRulingActive
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 ${
                                 isRulingActive
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                                  : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  : 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
                               }`}
                             >
                               <Sparkles size={10} />
@@ -1376,14 +1423,36 @@ ${isRulingActive
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Print / Save PDF Button */}
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                  title="Print / Save Clean A4 Dossier PDF"
+                >
+                  <Printer size={13} />
+                  <span>Print A4</span>
+                </button>
+
+                {/* WhatsApp Batch Dispatch */}
+                <button
+                  onClick={handleWhatsAppBatchDispatch}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
+                  title="Send 3-Point Bulletin to WhatsApp Booth Groups"
+                >
+                  <MessageCircle size={13} />
+                  <span>Forward Alert</span>
+                </button>
+
+                {/* Copy Text Dossier */}
                 <button
                   onClick={handleExportACDossier}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
                   title="Copy Full A4 Briefing Dossier to Clipboard"
                 >
                   {dossierExportCopied ? <Check size={14} className="text-emerald-300" /> : <FileText size={14} />}
-                  <span>{dossierExportCopied ? 'Dossier Copied!' : 'Export Field Dossier'}</span>
+                  <span>{dossierExportCopied ? 'Copied' : 'Export Dossier'}</span>
                 </button>
+
                 <button
                   onClick={() => setDeepDiveAC(null)}
                   className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 cursor-pointer"
@@ -1436,6 +1505,50 @@ ${isRulingActive
                   </div>
                 </div>
               </div>
+
+              {/* Civic Category Breakdown Bar */}
+              {deepDiveData.categoryBreakdown.length > 0 && (
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <PieChart size={13} className="text-amber-400" />
+                      <span>Dominant Grievance Categories in AC</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500">{deepDiveData.categoryBreakdown.length} Sectors Active</span>
+                  </div>
+
+                  {/* Multi-segmented visual bar */}
+                  <div className="w-full bg-slate-900 rounded-full h-2.5 flex overflow-hidden border border-slate-800">
+                    {deepDiveData.categoryBreakdown.map((cat, idx) => {
+                      const colors = ['bg-amber-500', 'bg-rose-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-sky-500'];
+                      const color = colors[idx % colors.length];
+                      return (
+                        <div
+                          key={cat.name}
+                          style={{ width: `${cat.percent}%` }}
+                          className={`${color} h-full transition-all`}
+                          title={`${cat.name}: ${cat.percent}%`}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {/* Category Legend Tags */}
+                  <div className="flex flex-wrap gap-2 pt-0.5">
+                    {deepDiveData.categoryBreakdown.map((cat, idx) => {
+                      const dotColors = ['bg-amber-400', 'bg-rose-400', 'bg-indigo-400', 'bg-emerald-400', 'bg-sky-400'];
+                      return (
+                        <div key={cat.name} className="flex items-center gap-1.5 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800 text-[10px] text-slate-300 font-medium">
+                          <span className={`w-2 h-2 rounded-full ${dotColors[idx % dotColors.length]}`}></span>
+                          <span>{cat.name}:</span>
+                          <span className="font-bold text-slate-100">{cat.percent}%</span>
+                          <span className="text-slate-500">({cat.count})</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Actionable Flashpoints List with Fallback */}
               <div className="space-y-2">
