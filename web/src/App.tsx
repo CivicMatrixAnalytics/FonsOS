@@ -1380,7 +1380,7 @@ ${isRulingActive
                 value={selectedDistrict}
                 onChange={(e) => {
                   setSelectedDistrict(e.target.value);
-                  setSelectedConstituency('All'); // Auto reset constituency on district switch
+                  setSelectedConstituency('All');
                 }}
                 className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
@@ -2187,39 +2187,52 @@ ${isRulingActive
         </div>
       )}
 
-      {/* Constituency Deep Dive Modal */}
+      {/* Feature 3: Upgraded AC Intelligence Dossier & Printable Statutory Modal */}
       {deepDiveAC && deepDiveData && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-4 px-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between gap-4">
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4 print:p-0 print:static print:bg-white print:text-black">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden print:max-h-none print:border-none print:shadow-none print:rounded-none">
+            
+            {/* Modal Header */}
+            <div className="p-4 px-6 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between gap-4 print:border-b-2 print:border-black print:bg-transparent">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
-                  <Building2 size={22} />
+                <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 print:hidden">
+                  <Building2 size={24} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">{deepDiveData.acName}</h3>
-                  <p className="text-[11px] text-slate-400">{deepDiveData.district} District</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-lg text-white print:text-black">{deepDiveData.acName}</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 print:border-black print:text-black">
+                      {deepDiveData.district} District
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 print:text-neutral-600">
+                    Civic Matrix Analytics • Field Tactical Intelligence Dossier ({politicalConfig.election_cycle})
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Action Toolbar */}
+              <div className="flex items-center gap-2 print:hidden">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer shadow-sm"
+                  title="Print / Save as Statutory A4 PDF Dossier"
                 >
-                  <Printer size={13} />
-                  <span>Print</span>
+                  <Printer size={13} className="text-amber-400" />
+                  <span>Print Dossier</span>
                 </button>
                 <button
                   onClick={handleWhatsAppBatchDispatch}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer shadow-sm"
+                  title="Forward Tactical Summary to WhatsApp"
                 >
                   <MessageCircle size={13} />
-                  <span>Forward</span>
+                  <span>Dispatch</span>
                 </button>
                 <button
                   onClick={handleExportACDossier}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer shadow-sm"
+                  title="Copy Full Structured Dossier to Clipboard"
                 >
                   {dossierExportCopied ? <Check size={13} className="text-emerald-300" /> : <FileText size={13} />}
                   <span>{dossierExportCopied ? 'Copied' : 'Export'}</span>
@@ -2233,80 +2246,129 @@ ${isRulingActive
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold">Sitting MLA</span>
-                  <span className="font-bold text-sm text-slate-100 mt-0.5 block truncate">
-                    {deepDiveData.mla ? deepDiveData.mla.mla_name : 'Data Ingesting...'}
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 text-xs print:overflow-visible print:p-4">
+              
+              {/* Top Metric Cards */}
+              <div className="grid grid-cols-4 gap-3 print:grid-cols-4">
+                <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 print:border-neutral-300 print:bg-neutral-50">
+                  <span className="text-[10px] text-slate-500 print:text-neutral-600 uppercase font-bold tracking-wider">Sitting MLA</span>
+                  <span className="font-extrabold text-sm text-slate-100 print:text-black mt-1 block truncate">
+                    {deepDiveData.mla ? deepDiveData.mla.mla_name : 'Representative Mapped'}
                   </span>
-                  <span className="text-[10px] font-bold text-amber-400 mt-1 block">
-                    {deepDiveData.mla ? `Party: ${deepDiveData.mla.party}` : 'Party Pending'}
+                  <span className="text-[10px] font-bold text-amber-400 print:text-neutral-800 mt-0.5 block">
+                    Party: {deepDiveData.mla ? deepDiveData.mla.party : 'General Seat'}
                   </span>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold">Vulnerability Score</span>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-base font-black text-amber-400">{deepDiveData.score}/100</span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 print:border-neutral-300 print:bg-neutral-50">
+                  <span className="text-[10px] text-slate-500 print:text-neutral-600 uppercase font-bold tracking-wider">Vulnerability</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-base font-black text-amber-400 print:text-black">{deepDiveData.score}/100</span>
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
                       deepDiveData.score >= 65 
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' 
-                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 print:text-black' 
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 print:text-black'
                     }`}>
-                      {deepDiveData.score >= 65 ? 'SEVERE' : 'MODERATE'}
+                      {deepDiveData.score >= 65 ? 'FLASHPOINT' : 'MODERATE'}
                     </span>
                   </div>
+                  <span className="text-[10px] text-slate-400 print:text-neutral-600 mt-0.5 block">Ground Outrage Score</span>
                 </div>
 
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 uppercase font-bold">Total Ingested</span>
-                  <span className="text-base font-black text-slate-100 mt-0.5 block">{deepDiveData.totalIncidents}</span>
-                  <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
-                    <span className="text-rose-400">⚡ {deepDiveData.antiCount}</span>
+                <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 print:border-neutral-300 print:bg-neutral-50">
+                  <span className="text-[10px] text-slate-500 print:text-neutral-600 uppercase font-bold tracking-wider">Recorded Incidents</span>
+                  <span className="text-base font-black text-slate-100 print:text-black mt-1 block">{deepDiveData.totalIncidents}</span>
+                  <span className="text-[10px] text-rose-400 print:text-neutral-700 mt-0.5 block">
+                    {deepDiveData.actionableList.length} Actionable Charges
+                  </span>
+                </div>
+
+                <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 print:border-neutral-300 print:bg-neutral-50">
+                  <span className="text-[10px] text-slate-500 print:text-neutral-600 uppercase font-bold tracking-wider">Sentiment Balance</span>
+                  <div className="flex items-center gap-2 text-[11px] font-bold text-slate-200 print:text-black mt-1">
+                    <span className="text-rose-400">⚡ {deepDiveData.antiCount} Anti</span>
                     <span>•</span>
-                    <span className="text-emerald-400">🛡️ {deepDiveData.defCount}</span>
+                    <span className="text-emerald-400">🛡️ {deepDiveData.defCount} Def</span>
                   </div>
+                  <span className="text-[10px] text-slate-400 print:text-neutral-600 mt-0.5 block">
+                    {deepDiveData.neutralCount} Civic Neutral
+                  </span>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                  <Flame size={14} className="text-amber-500" />
-                  <span>Constituency Ground Flashpoints</span>
+              {/* Issue Category Distribution Bar */}
+              {deepDiveData.categoryBreakdown.length > 0 && (
+                <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5 print:border-neutral-300 print:bg-neutral-50">
+                  <span className="text-[10px] font-bold text-slate-400 print:text-black uppercase tracking-wider block">
+                    Constituency Civic Grievance Cluster Breakdown
+                  </span>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {deepDiveData.categoryBreakdown.map((cat) => (
+                      <div key={cat.name} className="flex items-center justify-between p-2 rounded bg-slate-900 border border-slate-800/80 print:bg-white print:border-neutral-300">
+                        <span className="text-slate-300 print:text-black font-medium">{cat.name}</span>
+                        <span className="font-bold text-amber-400 print:text-black">{cat.percent}% ({cat.count})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Field Incidents Charge-Sheet */}
+              <div className="space-y-2.5">
+                <h4 className="font-extrabold text-slate-200 print:text-black uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Flame size={14} className="text-amber-500 print:hidden" />
+                  <span>Ground Actionable Flashpoints & Charges ({deepDiveData.actionableList.length})</span>
                 </h4>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1 print:max-h-none print:overflow-visible">
                   {deepDiveData.actionableList.map((item, idx) => (
                     <div
                       key={item.id || idx}
-                      className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5"
+                      className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5 print:border-neutral-300 print:bg-white"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                          {item.category}
-                        </span>
-                        <span className="text-[10px] text-slate-500">{item.incident_date}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 print:border-neutral-300 print:text-black">
+                            {item.category}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500 print:text-neutral-500">{item.incident_date}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 print:text-neutral-500">{item.source_outlet}</span>
                       </div>
-                      <h5 className="font-semibold text-slate-200 text-xs">{item.title}</h5>
-                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                      
+                      <h5 className="font-bold text-slate-100 print:text-black text-xs">{item.title}</h5>
+                      
+                      <p className="text-[11px] text-slate-300 print:text-neutral-700 leading-relaxed">
                         {isRulingActive ? (item.defense_angle || item.summary) : (item.attack_angle || item.summary)}
                       </p>
+
+                      {item.proof_url && (
+                        <div className="pt-1 text-[10px] text-indigo-400 print:text-neutral-600 truncate">
+                          Proof Link: <a href={item.proof_url} target="_blank" rel="noopener noreferrer" className="underline">{item.proof_url}</a>
+                        </div>
+                      )}
                     </div>
                   ))}
+
                   {deepDiveData.actionableList.length === 0 && (
-                    <div className="p-5 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                      No critical field flashpoints recorded for this assembly seat.
+                    <div className="p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl print:border-neutral-300">
+                      No actionable charges or severe grievances documented for this assembly constituency.
                     </div>
                   )}
                 </div>
               </div>
+
             </div>
 
-            <div className="p-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Civic Matrix Analytics</span>
+            {/* Modal Footer */}
+            <div className="p-3.5 px-6 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between print:border-t-2 print:border-black print:bg-transparent">
+              <span className="text-[10px] text-slate-400 print:text-neutral-600">
+                Civic Matrix Analytics War-Room Protocol • Autonomous Intelligence Feed
+              </span>
               <button
                 onClick={() => setDeepDiveAC(null)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs cursor-pointer"
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs cursor-pointer print:hidden"
               >
                 Close
               </button>
