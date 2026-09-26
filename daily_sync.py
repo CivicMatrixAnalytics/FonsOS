@@ -25,13 +25,11 @@ SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "sb_p
 if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
     raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment variables.")
 
-# Point to dedicated FonsOS service account JSON
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.join(BASE_DIR, "service_account.json")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-# Initialize Vertex AI client using ExtractOS project
 ai_client = genai.Client(
     vertexai=True,
     project="extractos-506408",
@@ -41,7 +39,7 @@ ai_client = genai.Client(
 # ---------------------------------------------------------
 # Load Master 234 Assembly Constituencies Reference
 # ---------------------------------------------------------
-AC_REFERENCE_PATH = "tn_234_constituencies.json"
+AC_REFERENCE_PATH = os.path.join(BASE_DIR, "tn_234_constituencies.json")
 master_acs = []
 if os.path.exists(AC_REFERENCE_PATH):
     try:
@@ -56,6 +54,7 @@ DEFAULT_TN_LNG = 78.6569
 
 DISTRICT_COORDS = {
     "Ariyalur": (11.1401, 79.0786),
+    "Chengalpattu": (12.6841, 79.9836),
     "Chennai": (13.0827, 80.2707),
     "Coimbatore": (11.0168, 76.9558),
     "Cuddalore": (11.7480, 79.7714),
@@ -94,42 +93,91 @@ DISTRICT_COORDS = {
     "Virudhunagar": (9.5872, 77.9514),
 }
 
-RSS_QUERIES = [
-    "தமிழ்நாடு போராட்டம்",
-    "தமிழ்நாடு விபத்து சாலை",
-    "தமிழ்நாடு குடிநீர் தட்டுப்பாடு",
-    "தமிழ்நாடு அரசு மருத்துவமனை புகார்",
-    "தமிழ்நாடு மின்தடை போராட்டம்",
-    "Tamil Nadu law and order incident"
+# ---------------------------------------------------------
+# COMPREHENSIVE MULTI-OUTLET AGGREGATION NETWORK (MAX COVERAGE)
+# ---------------------------------------------------------
+def make_rss_url(query, lang="ta"):
+    encoded = urllib.parse.quote(query)
+    if lang == "en":
+        return f"https://news.google.com/rss/search?q={encoded}&hl=en-IN&gl=IN&ceid=IN:en"
+    return f"https://news.google.com/rss/search?q={encoded}&hl=ta&gl=IN&ceid=IN:ta"
+
+MULTI_SOURCE_FEEDS = [
+    # 1. National English Media (Tamil Nadu Bureau & Ground Events)
+    ("The Hindu - Tamil Nadu", make_rss_url("site:thehindu.com Tamil Nadu incident OR protest OR civic OR hospital", "en")),
+    ("Times of India - TN", make_rss_url("site:timesofindia.indiatimes.com Tamil Nadu incident OR protest OR civic", "en")),
+    ("India Today - TN", make_rss_url("site:indiatoday.in Tamil Nadu protest OR police OR clash OR corruption", "en")),
+    ("New Indian Express - TN", make_rss_url("site:newindianexpress.com Tamil Nadu grievance OR accident OR protest", "en")),
+    ("Deccan Chronicle - TN", make_rss_url("site:deccanchronicle.com Tamil Nadu road OR water OR rally OR arrest", "en")),
+    ("NDTV - Tamil Nadu", make_rss_url("site:ndtv.com Tamil Nadu incident OR protest OR dispute", "en")),
+    ("Hindustan Times - TN", make_rss_url("site:hindustantimes.com Tamil Nadu grievance OR protest", "en")),
+
+    # 2. Mainstream Daily Tamil Dailies (District Edition Pulses)
+    ("Daily Thanthi", make_rss_url("site:dailythanthi.com தமிழ்நாடு செய்திகள் OR விபத்து OR மறியல்")),
+    ("Dinamalar District News", make_rss_url("site:dinamalar.com தமிழ்நாடு மாவட்டம் OR புகார்")),
+    ("Dinakaran Local", make_rss_url("site:dinakaran.com தமிழ்நாடு மாவட்டம் OR போராட்டம்")),
+    ("Dinamani", make_rss_url("site:dinamani.com தமிழ்நாடு மாவட்டம் OR குற்றச்சாட்டு")),
+    ("Hindu Tamil Thisai", make_rss_url("site:hindutamil.in தமிழ்நாடு போராட்டம் OR கோரிக்கை OR அவதி")),
+
+    # 3. Aggressive Political, Investigative & Ground Portals
+    ("Nakkheeran Investigative", make_rss_url("site:nakkheeran.in தமிழ்நாடு")),
+    ("Junior Vikatan / Vikatan", make_rss_url("site:vikatan.com தமிழ்நாடு அரசு புகார் OR போராட்டம்")),
+    ("Oneindia Tamil", make_rss_url("site:tamil.oneindia.com தமிழ்நாடு போராட்டம் OR மறியல்")),
+    ("Webdunia Tamil", make_rss_url("site:tamil.webdunia.com தமிழ்நாடு விபத்து OR போராட்டம்")),
+
+    # 4. Regional, Evening Dailies & Southern District Specifics (Chinna Pathirikaigal)
+    ("Maalai Malar", make_rss_url("site:maalaimalar.com தமிழ்நாடு போராட்டம் OR விபத்து")),
+    ("Malai Murasu", make_rss_url("site:malaimurasu.com தமிழ்நாடு செய்திகள்")),
+    ("Thinaboomi (South TN)", make_rss_url("site:thinaboomi.com தமிழ்நாடு OR மதுரை OR நெல்லை")),
+    ("Tamil Murasu", make_rss_url("site:tamilmurasu.org தமிழ்நாடு")),
+    ("Theekkathir", make_rss_url("site:theekkathir.in தொழிலாளர் OR போராட்டம் OR கோரிக்கை")),
+    ("Viduthalai", make_rss_url("site:viduthalai.in தமிழ்நாடு அறிக்கை")),
+    ("Makkal Kural", make_rss_url("site:makkalkural.net தமிழ்நாடு")),
+
+    # 5. 24x7 TV News Digital Desks
+    ("Puthiyathalaimurai Live", make_rss_url("site:puthiyathalaimurai.com தமிழ்நாடு போராட்டம் OR விபத்து")),
+    ("News7 Tamil", make_rss_url("site:news7tamil.live தமிழ்நாடு")),
+    ("Polimer News", make_rss_url("site:polimernews.com தமிழ்நாடு செய்திகள்")),
+    ("Thanthi TV Digital", make_rss_url("site:thanthitv.com தமிழ்நாடு")),
+    ("Sun News Desk", make_rss_url("site:sunnews.in தமிழ்நாடு")),
+    ("News18 Tamil Nadu", make_rss_url("site:tamil.news18.com தமிழ்நாடு மாவட்டம்")),
+    ("ABP Nadu", make_rss_url("site:tamil.abplive.com தமிழ்நாடு புகார் OR போராட்டம்")),
+    ("Samayam Tamil", make_rss_url("site:tamil.samayam.com தமிழ்நாடு செய்தி OR அவதி")),
+
+    # 6. High-Priority Tactical Trigger Searches (Govt lapses & Spot Protests)
+    ("DVAC & Anti-Corruption", make_rss_url("தமிழ்நாடு ஊழல் OR DVAC OR லஞ்சம் OR சோதனை")),
+    ("Civic Crisis & Road Blocks", make_rss_url("தமிழ்நாடு சாலை மறியல் OR குடிநீர் தட்டுப்பாடு OR கழிவுநீர்")),
+    ("Power Shutdown & Farmers Protest", make_rss_url("தமிழ்நாடு மின்தடை போராட்டம் OR விவசாயிகள் கோரிக்கை")),
+    ("Government Hospital Complaints", make_rss_url("தமிழ்நாடு அரசு மருத்துவமனை புகார் OR சிகிச்சை குறைபாடு")),
+    ("Law & Order Flashpoints", make_rss_url("தமிழ்நாடு துப்பாக்கிச்சூடு OR மோதல் OR கைது கலவரம்"))
 ]
 
 def fetch_rss_articles():
     articles = []
     seen_links = set()
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-    for q in RSS_QUERIES:
-        encoded_q = urllib.parse.quote(q)
-        rss_url = f"https://news.google.com/rss/search?q={encoded_q}&hl=ta&gl=IN&ceid=IN:ta"
+    for source_label, rss_url in MULTI_SOURCE_FEEDS:
         try:
-            res = requests.get(rss_url, timeout=12)
+            res = requests.get(rss_url, headers=headers, timeout=12)
             if res.status_code == 200:
                 root = ET.fromstring(res.content)
                 for item in root.findall(".//item")[:10]:
                     title = item.find("title").text if item.find("title") is not None else ""
                     link = item.find("link").text if item.find("link") is not None else ""
-                    source = item.find("source").text if item.find("source") is not None else "Public Media"
+                    outlet = item.find("source").text if item.find("source") is not None else source_label
 
                     if link and link not in seen_links and title:
                         seen_links.add(link)
                         articles.append({
-                            "title": title,
-                            "link": link,
-                            "source": source
+                            "title": title.strip(),
+                            "link": link.strip(),
+                            "source": outlet.strip()
                         })
         except Exception as e:
-            print(f"Notice fetching RSS for query '{q}': {e}")
+            pass
             
-    print(f"Collected {len(articles)} unique raw news items for intelligence processing.")
+    print(f"Collected {len(articles)} unique raw news items across all Tamil & English media outlets.")
     return articles
 
 # ---------------------------------------------------------
@@ -143,7 +191,7 @@ def analyze_article_batch_with_gemini(batch_articles):
     batch_text = "\n".join(formatted_items)
 
     prompt = f"""
-You are the Chief Intelligence Analyst for FonsOS, an electoral war-room platform for Tamil Nadu.
+You are the Chief Intelligence Analyst for FonsOS, an electoral war-room platform for Tamil Nadu (2026 Scenario: TVK is ruling party, DMK and AIADMK are opposition).
 Analyze the following batch of news items and extract structured tactical intelligence for each item.
 
 News Items:
@@ -189,7 +237,6 @@ Schema for each item in the array:
         if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
             print("\n[NOTICE] Daily Gemini API rate quota reached for today.")
             return "QUOTA_EXHAUSTED"
-        print(f"Batch AI processing notice: {e}")
         return []
 
 # ---------------------------------------------------------
@@ -208,9 +255,8 @@ def run_daily_sync():
     except Exception as e:
         print(f"Notice querying existing incidents: {e}")
 
-    # Filter out already ingested articles
     unprocessed_articles = [a for a in articles if a["link"] not in existing_urls]
-    print(f"{len(unprocessed_articles)} new articles to analyze.")
+    print(f"{len(unprocessed_articles)} new articles to analyze across 32+ channels.")
 
     inserted_count = 0
     today_str = datetime.date.today().isoformat()
@@ -240,17 +286,18 @@ def run_daily_sync():
             summary_text = intel.get("summary") or orig_item.get("title", "")
             full_text = f"{title_text} {summary_text}".strip()
 
-            ac_name = intel.get("constituency")
+            # PRIMARY STEP: Dynamic GeoHierarchyResolver (Zero Hardcoding)
+            geo_res = resolve_constituency(district=district, raw_text=full_text)
+            
+            if geo_res and geo_res.get("constituency"):
+                ac_name = geo_res["constituency"]
+                print(f"   [GeoResolver Dynamic Match] AC: '{ac_name}' via status '{geo_res.get('status')}'")
+            else:
+                ac_name = intel.get("constituency")
+
             ac_num = intel.get("ac_number")
 
-            # Deterministic Bilingual Geo Resolver Fallback
-            if not ac_name or not ac_num:
-                geo_res = resolve_constituency(district=district, raw_text=full_text)
-                if geo_res and geo_res.get("constituency"):
-                    ac_name = geo_res["constituency"]
-
-            # Resolve AC Number from master registry
-            if ac_name and not ac_num and master_acs:
+            if ac_name and master_acs:
                 ac_name_clean = ac_name.strip().lower()
                 match = next(
                     (ac for ac in master_acs if ac.get("name", "").strip().lower() in [ac_name_clean, ac_name_clean.replace(" ", "")]),
@@ -289,7 +336,6 @@ def run_daily_sync():
             except Exception as e:
                 print(f"-> [ERROR] Supabase insert notice: {e}")
 
-        # Pacing between batches to prevent 503 spikes
         time.sleep(3)
 
     print(f"\n=======================================================")
