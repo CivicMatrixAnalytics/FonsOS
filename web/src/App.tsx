@@ -124,6 +124,9 @@ export default function App() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
+  // Quick Pending Review Filter
+  const [filterPendingOnly, setFilterPendingOnly] = useState<boolean>(false);
+
   const [reportForm, setReportForm] = useState({
     title: '',
     summary: '',
@@ -228,7 +231,6 @@ export default function App() {
     fetchMlaRegistry();
     fetchIncidents();
 
-    // Automated Supabase Realtime Subscription
     const channel = supabase
       .channel('incidents-realtime-feed')
       .on(
@@ -290,6 +292,7 @@ export default function App() {
     setUserRole('public');
     setSelectedPartyFilter(null);
     setSelectedSentiment('All');
+    setFilterPendingOnly(false);
   };
 
   const getMlaDetails = (ac_number?: number | null) => {
@@ -321,6 +324,11 @@ export default function App() {
     const now = new Date('2026-09-26').getTime();
 
     return incidents.filter((inc) => {
+      // Direct Pending Quick Review Filter
+      if (filterPendingOnly && !isPublic) {
+        return inc.verification_status === 'pending';
+      }
+
       // 1. PUBLIC RESTRICTION: Do not show pending unverified incidents to the public
       if (isPublic && inc.verification_status === 'pending') {
         return false;
@@ -363,7 +371,7 @@ export default function App() {
 
       return matchDistrict && matchConstituency && matchCategory && matchSentiment && matchActionable && matchSearch && matchTime;
     });
-  }, [incidents, isPublic, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
+  }, [incidents, isPublic, filterPendingOnly, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
 
   // Pending count for Admin Review
   const pendingCount = useMemo(() => {
@@ -466,7 +474,6 @@ export default function App() {
     const rawActionable = acIncidents.filter((i) => i.is_actionable);
     const actionableList = rawActionable.length > 0 ? rawActionable : acIncidents;
 
-    // Civic Category Breakdown
     const catMap: Record<string, number> = {};
     acIncidents.forEach((item) => {
       catMap[item.category] = (catMap[item.category] || 0) + 1;
@@ -658,7 +665,6 @@ ${isRulingActive
         longitude: lng,
         political_sentiment: reportForm.political_sentiment,
         is_actionable: reportForm.is_actionable,
-        // Admin submits direct-verified, public/cadre submits pending verification
         verification_status: userRole === 'admin' ? 'verified' : 'pending',
         attack_angle: `${reportForm.constituency || reportForm.district}-ல் அரசு நிர்வாக மெத்தனத்தால் மக்கள் பாதிப்பு. உடனடி தீர்வு தேவை.`,
         defense_angle: `இப்பிரச்சனை குறித்து கள அதிகாரிகள் மூலம் உடனடி நடவடிக்கை எடுக்கப்பட்டு வருகிறது.`
@@ -934,12 +940,23 @@ ${isRulingActive
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* Admin Verification Pending Pill */}
+            {/* Clickable Admin Verification Pending Button */}
             {userRole === 'admin' && pendingCount > 0 && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
-                🛡️ {pendingCount} Pending Review
-              </span>
+              <button
+                onClick={() => setFilterPendingOnly(!filterPendingOnly)}
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  filterPendingOnly
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md ring-2 ring-amber-400/50'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 animate-pulse'
+                }`}
+                title="Click to isolate and review pending cadre submissions"
+              >
+                <span>🛡️</span>
+                <span>{pendingCount} Pending Review</span>
+                {filterPendingOnly && <span className="text-[9px] bg-slate-900/40 text-slate-900 px-1 rounded font-black">ACTIVE</span>}
+              </button>
             )}
+
             {activeFlashpoints.length > 0 && (
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 flex items-center gap-1 animate-pulse">
                 <Flame size={11} />
@@ -998,6 +1015,22 @@ ${isRulingActive
         {/* Left Side: Filterable Feed */}
         <div className="w-[430px] flex flex-col border-r border-slate-800 bg-slate-900/60 backdrop-blur z-10">
           <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900/90">
+            {/* Quick Pending Review Banner in Feed */}
+            {filterPendingOnly && (
+              <div className="p-2 bg-amber-500/15 border border-amber-500/40 rounded-lg flex items-center justify-between text-xs">
+                <span className="text-amber-300 font-bold flex items-center gap-1.5">
+                  <ShieldAlert size={14} />
+                  <span>Reviewing {filteredIncidents.length} Pending Cadre Dispatch{filteredIncidents.length > 1 ? 'es' : ''}</span>
+                </span>
+                <button
+                  onClick={() => setFilterPendingOnly(false)}
+                  className="text-[10px] text-amber-400 hover:text-white underline cursor-pointer"
+                >
+                  Exit Review
+                </button>
+              </div>
+            )}
+
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 text-slate-500" size={14} />
               <input
@@ -1070,7 +1103,7 @@ ${isRulingActive
                   />
                   Actionable Ground Flashpoints Only
                 </label>
-                {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter) && (
+                {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter || filterPendingOnly) && (
                   <button
                     onClick={() => {
                       setSelectedDistrict('All');
@@ -1079,6 +1112,7 @@ ${isRulingActive
                       setSelectedSentiment('All');
                       setSelectedPartyFilter(null);
                       setActionableOnly(false);
+                      setFilterPendingOnly(false);
                       setSearchQuery('');
                     }}
                     className="text-[10px] text-amber-400 hover:underline cursor-pointer"
@@ -1110,6 +1144,8 @@ ${isRulingActive
                   className={`p-3 rounded-lg cursor-pointer transition-all border ${
                     isSelected
                       ? 'bg-slate-800/90 border-amber-500/70 shadow-lg'
+                      : isPending
+                      ? 'bg-amber-950/20 border-amber-600/40 hover:bg-amber-900/30'
                       : 'bg-slate-950/40 border-slate-800/80 hover:bg-slate-800/50 hover:border-slate-700'
                   }`}
                 >
@@ -1139,7 +1175,7 @@ ${isRulingActive
 
                       {/* Verification Status Pill for War Room */}
                       {!isPublic && isPending && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 border border-amber-300 shadow-sm animate-pulse">
                           Pending Review
                         </span>
                       )}
@@ -1223,7 +1259,9 @@ ${isRulingActive
 
             {filteredIncidents.length === 0 && (
               <div className="p-8 text-center text-xs text-slate-500">
-                {isPublic 
+                {filterPendingOnly
+                  ? 'No pending cadre submissions awaiting review.'
+                  : isPublic 
                   ? 'No news records found for the last 48 hours in this filter.' 
                   : 'No incidents match your selected filters.'}
               </div>
