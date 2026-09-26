@@ -80,6 +80,31 @@ interface MlaInfo {
 
 type UserRole = 'public' | 'admin' | 'candidate';
 
+// FonsOS 20 Master Intelligence Categories
+const MASTER_TAXONOMY_CATEGORIES = [
+  "All Categories",
+  "Politics & Political Activity",
+  "Government & Administration",
+  "Elections & Electoral Process",
+  "Corruption & Misconduct",
+  "Law & Order / Crime",
+  "Crimes Against Women & Women Safety",
+  "Crimes Against Children & Child Welfare",
+  "Education",
+  "Healthcare",
+  "Agriculture & Rural",
+  "Fishermen & Coastal Issues",
+  "Employment & Labour",
+  "Infrastructure & Public Works",
+  "Environment & Natural Resources",
+  "Welfare & Social Security",
+  "Social / Community Conflicts & Atrocities",
+  "Youth & Students",
+  "Digital / Social Media Signals",
+  "Judiciary & Legal",
+  "Public Grievance & Ground Mobilisation"
+];
+
 function MapViewController({ 
   selectedCoord, 
   filterCoord 
@@ -165,7 +190,7 @@ export default function App() {
 
   const [selectedDistrict, setSelectedDistrict] = useState<string>('All');
   const [selectedConstituency, setSelectedConstituency] = useState<string>('All');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
   const [selectedSentiment, setSelectedSentiment] = useState<string>('All');
   const [selectedPartyFilter, setSelectedPartyFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -400,6 +425,13 @@ export default function App() {
     return ['All', ...acs.sort()];
   }, [incidents, selectedDistrict, districtAcMap]);
 
+  // Merged Master Taxonomy Categories List
+  const categoryList = useMemo(() => {
+    const fromIncidents = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
+    const merged = Array.from(new Set([...MASTER_TAXONOMY_CATEGORIES, ...fromIncidents]));
+    return merged;
+  }, [incidents]);
+
   const filteredIncidents = useMemo(() => {
     const now = new Date('2026-09-26').getTime();
 
@@ -427,7 +459,7 @@ export default function App() {
       const matchDistrict = selectedDistrict === 'All' || inc.district === selectedDistrict;
       const acLabel = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : `${inc.constituency}`;
       const matchConstituency = selectedConstituency === 'All' || acLabel === selectedConstituency;
-      const matchCategory = selectedCategory === 'All' || inc.category === selectedCategory;
+      const matchCategory = selectedCategory === 'All Categories' || selectedCategory === 'All' || inc.category === selectedCategory;
       const matchSentiment = isPublic || selectedSentiment === 'All' || inc.political_sentiment === selectedSentiment;
       const matchActionable = isPublic || !actionableOnly || inc.is_actionable;
       const matchSearch =
@@ -523,11 +555,6 @@ export default function App() {
       .sort((a, b) => b.score - a.score || b.count - a.count)
       .slice(0, 10);
   }, [incidents, isPublic, mlaRegistry]);
-
-  const categoryList = useMemo(() => {
-    const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
-    return ['All', ...list.sort()];
-  }, [incidents]);
 
   const selectedCoord = useMemo<[number, number] | null>(() => {
     if (selectedIncident && selectedIncident.latitude && selectedIncident.longitude) {
@@ -1401,13 +1428,14 @@ ${isRulingActive
             </div>
 
             <div className={`grid ${isPublic ? 'grid-cols-1' : 'grid-cols-2'} gap-2 items-center`}>
+              {/* Upgraded 20 Master Taxonomy Dropdown */}
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
                 {categoryList.map((c) => (
-                  <option key={c} value={c} className="bg-slate-900">{c === 'All' ? 'All Categories' : c}</option>
+                  <option key={c} value={c} className="bg-slate-900">{c}</option>
                 ))}
               </select>
 
@@ -1436,12 +1464,12 @@ ${isRulingActive
                   />
                   Actionable Ground Flashpoints Only
                 </label>
-                {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || selectedCategory !== 'All' || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter || filterPendingOnly) && (
+                {(selectedDistrict !== 'All' || selectedConstituency !== 'All' || (selectedCategory !== 'All' && selectedCategory !== 'All Categories') || selectedSentiment !== 'All' || actionableOnly || selectedPartyFilter || filterPendingOnly) && (
                   <button
                     onClick={() => {
                       setSelectedDistrict('All');
                       setSelectedConstituency('All');
-                      setSelectedCategory('All');
+                      setSelectedCategory('All Categories');
                       setSelectedSentiment('All');
                       setSelectedPartyFilter(null);
                       setActionableOnly(false);
@@ -1505,6 +1533,26 @@ ${isRulingActive
                           {incident.category}
                         </span>
                       )}
+
+                      {/* Tactical Subcategory Tag (e.g. CHI-02, PUB-WATER, COR-01) */}
+                      {incident.strategic_tag && (
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-950/70 border border-blue-500/40 text-blue-300 font-bold uppercase tracking-wider">
+                          {incident.strategic_tag}
+                        </span>
+                      )}
+
+                      {/* Dynamic Severity Threat Pill */}
+                      <span
+                        className={`text-[9px] font-black px-1.5 py-0.5 rounded border uppercase tracking-wider ${
+                          incident.severity === 'High'
+                            ? 'bg-rose-950/80 border-rose-500/60 text-rose-300 animate-pulse'
+                            : incident.severity === 'Medium'
+                            ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        {incident.severity}
+                      </span>
 
                       {!isPublic && isPending && (
                         <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 border border-amber-300 shadow-sm animate-pulse">
@@ -1701,7 +1749,7 @@ ${isRulingActive
           <div className="absolute top-4 right-4 bottom-4 w-[460px] bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl flex flex-col z-20 backdrop-blur overflow-hidden">
             <div className="p-4 border-b border-slate-800 flex items-start justify-between gap-3 bg-slate-950/60">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {selectedIncident.constituency && (
                     <button
                       onClick={() => {
@@ -1721,6 +1769,20 @@ ${isRulingActive
                   )}
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                     {selectedIncident.category}
+                  </span>
+                  {selectedIncident.strategic_tag && (
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-950/80 text-blue-300 border border-blue-500/50 uppercase">
+                      {selectedIncident.strategic_tag}
+                    </span>
+                  )}
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded border uppercase ${
+                    selectedIncident.severity === 'High'
+                      ? 'bg-rose-950/80 border-rose-500/60 text-rose-300'
+                      : selectedIncident.severity === 'Medium'
+                      ? 'bg-amber-950/80 border-amber-500/50 text-amber-300'
+                      : 'bg-slate-800 border-slate-700 text-slate-400'
+                  }`}>
+                    {selectedIncident.severity}
                   </span>
                   {selectedIncident.verification_status === 'pending' && (
                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
