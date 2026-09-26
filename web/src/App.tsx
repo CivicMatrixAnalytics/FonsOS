@@ -34,7 +34,9 @@ import {
   PieChart,
   TrendingUp,
   PlusCircle,
-  Send
+  Send,
+  Trash2,
+  CheckCircle2
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -58,6 +60,7 @@ interface Incident {
   constituency?: string | null;
   ac_number?: number | null;
   political_sentiment?: 'anti_incumbency' | 'ruling_defense' | 'neutral';
+  verification_status?: 'verified' | 'pending' | 'rejected';
 }
 
 interface PoliticalConfig {
@@ -118,6 +121,9 @@ export default function App() {
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [submittingReport, setSubmittingReport] = useState<boolean>(false);
   const [reportSuccess, setReportSuccess] = useState<boolean>(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+
   const [reportForm, setReportForm] = useState({
     title: '',
     summary: '',
@@ -235,6 +241,24 @@ export default function App() {
           setTimeout(() => setRealtimeAlert(null), 4500);
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'incidents' },
+        (payload) => {
+          const deletedId = payload.old?.id;
+          if (deletedId) {
+            setIncidents((prev) => prev.filter((i) => i.id !== deletedId));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'incidents' },
+        (payload) => {
+          const updated = payload.new as Incident;
+          setIncidents((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -297,7 +321,12 @@ export default function App() {
     const now = new Date('2026-09-26').getTime();
 
     return incidents.filter((inc) => {
-      // 1. PUBLIC RESTRICTION: strictly Today & Yesterday (<= 48 Hours)
+      // 1. PUBLIC RESTRICTION: Do not show pending unverified incidents to the public
+      if (isPublic && inc.verification_status === 'pending') {
+        return false;
+      }
+
+      // 2. PUBLIC RESTRICTION: strictly Today & Yesterday (<= 48 Hours)
       if (isPublic && inc.incident_date) {
         const incTime = new Date(inc.incident_date).getTime();
         const diffDays = (now - incTime) / (1000 * 3600 * 24);
@@ -335,6 +364,11 @@ export default function App() {
       return matchDistrict && matchConstituency && matchCategory && matchSentiment && matchActionable && matchSearch && matchTime;
     });
   }, [incidents, isPublic, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
+
+  // Pending count for Admin Review
+  const pendingCount = useMemo(() => {
+    return incidents.filter((i) => i.verification_status === 'pending').length;
+  }, [incidents]);
 
   // Flashpoints calculation (only for authorized war room)
   const flashpointCounts = useMemo(() => {
@@ -429,7 +463,6 @@ export default function App() {
     const defCount = acIncidents.filter((i) => i.political_sentiment === 'ruling_defense').length;
     const neutralCount = acIncidents.filter((i) => i.political_sentiment === 'neutral').length;
     
-    // Explicit actionable items OR full list fallback
     const rawActionable = acIncidents.filter((i) => i.is_actionable);
     const actionableList = rawActionable.length > 0 ? rawActionable : acIncidents;
 
@@ -600,14 +633,13 @@ ${isRulingActive
     setTimeout(() => setDossierCopied(false), 2500);
   };
 
-  // Submit Cadre Ground Report
+  // Submit Cadre Ground Report with Auto-Verification Flag
   const handleSubmitGroundReport = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reportForm.title || !reportForm.summary) return;
 
     setSubmittingReport(true);
     try {
-      // Find matching coordinate if exists
       const matchedDistrictIncident = incidents.find((i) => i.district === reportForm.district && i.latitude && i.longitude);
       const lat = matchedDistrictIncident?.latitude || 11.1271;
       const lng = matchedDistrictIncident?.longitude || 78.6569;
@@ -626,6 +658,8 @@ ${isRulingActive
         longitude: lng,
         political_sentiment: reportForm.political_sentiment,
         is_actionable: reportForm.is_actionable,
+        // Admin submits direct-verified, public/cadre submits pending verification
+        verification_status: userRole === 'admin' ? 'verified' : 'pending',
         attack_angle: `${reportForm.constituency || reportForm.district}-ல் அரசு நிர்வாக மெத்தனத்தால் மக்கள் பாதிப்பு. உடனடி தீர்வு தேவை.`,
         defense_angle: `இப்பிரச்சனை குறித்து கள அதிகாரிகள் மூலம் உடனடி நடவடிக்கை எடுக்கப்பட்டு வருகிறது.`
       };
@@ -657,9 +691,61 @@ ${isRulingActive
       }
     } catch (err) {
       console.error('Error submitting ground incident:', err);
-      alert('Failed to submit ground incident. Please check console.');
+      alert('Failed to submit ground incident. Please check database permissions.');
     } finally {
       setSubmittingReport(false);
+    }
+  };
+
+  // Admin Action: Approve / Verify Incident
+  const handleVerifyIncident = async (id: string) => {
+    setVerifyingId(id);
+    try {
+      const { error } = await supabase
+        .from('incidents')
+        .update({ verification_status: 'verified' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setIncidents((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, verification_status: 'verified' } : item))
+      );
+
+      if (selectedIncident?.id === id) {
+        setSelectedIncident((prev) => (prev ? { ...prev, verification_status: 'verified' } : null));
+      }
+    } catch (err) {
+      console.error('Error verifying incident:', err);
+      alert('Failed to verify incident.');
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  // Admin Action: Delete / Purge Incident
+  const handleDeleteIncident = async (id: string) => {
+    const confirmDelete = window.confirm('Are you sure you want to permanently delete/purge this incident from FonsOS intelligence database?');
+    if (!confirmDelete) return;
+
+    setDeletingId(id);
+    try {
+      const { error } = await supabase
+        .from('incidents')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setIncidents((prev) => prev.filter((item) => item.id !== id));
+      if (selectedIncident?.id === id) {
+        setSelectedIncident(null);
+      }
+    } catch (err) {
+      console.error('Error deleting incident:', err);
+      alert('Failed to delete incident. Please check database permissions.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -848,6 +934,12 @@ ${isRulingActive
             </span>
           </div>
           <div className="flex items-center gap-3">
+            {/* Admin Verification Pending Pill */}
+            {userRole === 'admin' && pendingCount > 0 && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                🛡️ {pendingCount} Pending Review
+              </span>
+            )}
             {activeFlashpoints.length > 0 && (
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/50 text-rose-300 flex items-center gap-1 animate-pulse">
                 <Flame size={11} />
@@ -1006,6 +1098,7 @@ ${isRulingActive
               const mla = getMlaDetails(incident.ac_number);
               const isRulingMla = mla && mla.party === politicalConfig.ruling_party;
               const acLabel = incident.ac_number ? `AC ${incident.ac_number}: ${incident.constituency}` : (incident.constituency || null);
+              const isPending = incident.verification_status === 'pending';
 
               return (
                 <div
@@ -1041,6 +1134,13 @@ ${isRulingActive
                       ) : (
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">
                           {incident.category}
+                        </span>
+                      )}
+
+                      {/* Verification Status Pill for War Room */}
+                      {!isPublic && isPending && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                          Pending Review
                         </span>
                       )}
 
@@ -1155,7 +1255,6 @@ ${isRulingActive
               const placeKey = incident.constituency || incident.district;
               const isFlashpoint = !isPublic && placeKey && (flashpointCounts[placeKey] || 0) >= 5;
 
-              // In public mode, use neutral calm colors
               const color = isPublic 
                 ? '#38bdf8' 
                 : (isActionable 
@@ -1164,7 +1263,6 @@ ${isRulingActive
 
               return (
                 <div key={incident.id}>
-                  {/* Heat Intensity Outer Pulsing Circle only in War-Room */}
                   {isFlashpoint && (
                     <CircleMarker
                       center={[incident.latitude, incident.longitude]}
@@ -1246,6 +1344,11 @@ ${isRulingActive
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 uppercase">
                     {selectedIncident.category}
                   </span>
+                  {selectedIncident.verification_status === 'pending' && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      Pending Review
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-sm font-bold text-slate-100 leading-snug">
                   {selectedIncident.title}
@@ -1272,7 +1375,6 @@ ${isRulingActive
                 Overview
               </button>
 
-              {/* In Public mode, show locked placeholder */}
               {isPublic ? (
                 <button
                   onClick={() => setShowLoginModal(true)}
@@ -1283,7 +1385,6 @@ ${isRulingActive
                 </button>
               ) : (
                 <>
-                  {/* Attack tab: visible for Admin or Opposition Candidates */}
                   {(userRole === 'admin' || (userRole === 'candidate' && warRoomLens !== politicalConfig.ruling_party)) && (
                     <button
                       onClick={() => setActiveTab('attack')}
@@ -1298,7 +1399,6 @@ ${isRulingActive
                     </button>
                   )}
 
-                  {/* Defense tab: visible for Admin or Ruling Candidates */}
                   {(userRole === 'admin' || (userRole === 'candidate' && warRoomLens === politicalConfig.ruling_party)) && (
                     <button
                       onClick={() => setActiveTab('defense')}
@@ -1319,7 +1419,6 @@ ${isRulingActive
             <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
               {activeTab === 'details' && (
                 <div className="space-y-4">
-                  {/* Dynamic MLA Box (War-Room only) */}
                   {!isPublic && selectedIncident.ac_number && getMlaDetails(selectedIncident.ac_number) && (
                     <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
@@ -1341,7 +1440,6 @@ ${isRulingActive
                     </div>
                   )}
 
-                  {/* Anti-Incumbency Vulnerability Meter (War-Room only) */}
                   {!isPublic && (() => {
                     const acIncidents = filteredIncidents.filter(
                       (i) =>
@@ -1426,7 +1524,6 @@ ${isRulingActive
                     </div>
                   </div>
 
-                  {/* Public Call-to-Action Card */}
                   {isPublic && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
                       <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
@@ -1542,7 +1639,8 @@ ${isRulingActive
               )}
             </div>
 
-            <div className="p-3 border-t border-slate-800 bg-slate-950/60">
+            {/* Bottom Actions: Proof + Admin Verify & Delete */}
+            <div className="p-3 border-t border-slate-800 bg-slate-950/80 space-y-2">
               <a
                 href={selectedIncident.proof_url}
                 target="_blank"
@@ -1552,6 +1650,31 @@ ${isRulingActive
                 <span>Examine Public Proof / Article</span>
                 <ExternalLink size={13} />
               </a>
+
+              {/* Admin Moderation Controls */}
+              {userRole === 'admin' && (
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                  {selectedIncident.verification_status === 'pending' && (
+                    <button
+                      onClick={() => handleVerifyIncident(selectedIncident.id)}
+                      disabled={verifyingId === selectedIncident.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/40 border border-emerald-500/50 text-emerald-300 font-bold text-xs transition-all cursor-pointer"
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>{verifyingId === selectedIncident.id ? 'Publishing...' : 'Verify & Publish'}</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleDeleteIncident(selectedIncident.id)}
+                    disabled={deletingId === selectedIncident.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                    <span>{deletingId === selectedIncident.id ? 'Deleting...' : 'Delete Incident'}</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1568,7 +1691,9 @@ ${isRulingActive
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-white">Ground Cadre Incident Dispatch</h3>
-                  <p className="text-[11px] text-slate-400">Directly ingest verified local issue into war-room intelligence</p>
+                  <p className="text-[11px] text-slate-400">
+                    {userRole === 'admin' ? 'Immediate Verified Ingestion' : 'Submitted for Intelligence Verification'}
+                  </p>
                 </div>
               </div>
               <button
@@ -1690,7 +1815,11 @@ ${isRulingActive
               {reportSuccess && (
                 <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
                   <Check size={16} />
-                  <span>Ground incident ingested into live feed successfully!</span>
+                  <span>
+                    {userRole === 'admin' 
+                      ? 'Ground incident ingested and published successfully!' 
+                      : 'Incident submitted to War-Room Verification Queue!'}
+                  </span>
                 </div>
               )}
 
@@ -1738,7 +1867,6 @@ ${isRulingActive
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                {/* Print / Save PDF Button */}
                 <button
                   onClick={() => window.print()}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
@@ -1748,7 +1876,6 @@ ${isRulingActive
                   <span>Print</span>
                 </button>
 
-                {/* WhatsApp Batch Dispatch */}
                 <button
                   onClick={handleWhatsAppBatchDispatch}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
@@ -1758,7 +1885,6 @@ ${isRulingActive
                   <span>Forward</span>
                 </button>
 
-                {/* Copy Text Dossier */}
                 <button
                   onClick={handleExportACDossier}
                   className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
@@ -1779,7 +1905,6 @@ ${isRulingActive
 
             {/* Modal Body */}
             <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
-              {/* MLA & Seat Overview */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
                   <span className="text-[10px] text-slate-500 block uppercase font-bold">Sitting MLA</span>
@@ -1821,7 +1946,6 @@ ${isRulingActive
                 </div>
               </div>
 
-              {/* Civic Category Breakdown Bar */}
               {deepDiveData.categoryBreakdown.length > 0 && (
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -1832,7 +1956,6 @@ ${isRulingActive
                     <span className="text-[10px] text-slate-500">{deepDiveData.categoryBreakdown.length} Sectors Active</span>
                   </div>
 
-                  {/* Multi-segmented visual bar */}
                   <div className="w-full bg-slate-900 rounded-full h-2.5 flex overflow-hidden border border-slate-800">
                     {deepDiveData.categoryBreakdown.map((cat, idx) => {
                       const colors = ['bg-amber-500', 'bg-rose-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-sky-500'];
@@ -1848,7 +1971,6 @@ ${isRulingActive
                     })}
                   </div>
 
-                  {/* Category Legend Tags */}
                   <div className="flex flex-wrap gap-2 pt-0.5">
                     {deepDiveData.categoryBreakdown.map((cat, idx) => {
                       const dotColors = ['bg-amber-400', 'bg-rose-400', 'bg-indigo-400', 'bg-emerald-400', 'bg-sky-400'];
@@ -1865,7 +1987,6 @@ ${isRulingActive
                 </div>
               )}
 
-              {/* Actionable Flashpoints List with Fallback */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -1905,7 +2026,6 @@ ${isRulingActive
               </div>
             </div>
 
-            {/* Modal Footer */}
             <div className="p-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
               <span className="text-[11px] text-slate-400">
                 Civic Matrix Analytics • Field Intelligence Unit
