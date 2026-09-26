@@ -31,7 +31,8 @@ import {
   FileText,
   BarChart3,
   Printer,
-  PieChart
+  PieChart,
+  TrendingUp
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -332,6 +333,37 @@ export default function App() {
   const activeFlashpoints = useMemo(() => {
     return Object.entries(flashpointCounts).filter(([_, count]) => count >= 5);
   }, [flashpointCounts]);
+
+  // Top 10 Battleground Constituencies Ranking
+  const top10Battlegrounds = useMemo(() => {
+    if (isPublic) return [];
+    const acGroups: Record<string, { count: number; high: number; anti: number; acNumber: number | null }> = {};
+    
+    incidents.forEach((inc) => {
+      if (!inc.constituency) return;
+      const label = inc.ac_number ? `AC ${inc.ac_number}: ${inc.constituency}` : inc.constituency;
+      if (!acGroups[label]) {
+        acGroups[label] = { count: 0, high: 0, anti: 0, acNumber: inc.ac_number || null };
+      }
+      acGroups[label].count += 1;
+      if (inc.severity === 'High') acGroups[label].high += 1;
+      if (inc.political_sentiment === 'anti_incumbency') acGroups[label].anti += 1;
+    });
+
+    return Object.entries(acGroups)
+      .map(([acLabel, data]) => {
+        const score = Math.min(100, Math.max(25, (data.high * 35) + (data.anti * 25) + (data.count * 15)));
+        const mla = getMlaDetails(data.acNumber);
+        return {
+          acLabel,
+          count: data.count,
+          score,
+          mla
+        };
+      })
+      .sort((a, b) => b.score - a.score || b.count - a.count)
+      .slice(0, 10);
+  }, [incidents, isPublic, mlaRegistry]);
 
   const categoryList = useMemo(() => {
     const list = Array.from(new Set(incidents.map((i) => i.category).filter(Boolean)));
@@ -733,6 +765,38 @@ ${isRulingActive
             <span className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
               {filteredIncidents.length} Filtered Incidents ({timeFilter} Scope)
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Top 10 Battleground Flashpoints Ticker (War-Room Only) */}
+      {!isPublic && top10Battlegrounds.length > 0 && (
+        <div className="px-4 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center gap-2 text-xs overflow-x-auto">
+          <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400 whitespace-nowrap mr-1">
+            <TrendingUp size={13} />
+            <span>Top 10 Battlegrounds:</span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            {top10Battlegrounds.map((bg, idx) => (
+              <button
+                key={bg.acLabel}
+                onClick={() => setDeepDiveAC(bg.acLabel)}
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-950 border border-slate-800 hover:border-amber-500/60 transition-all text-[10px] whitespace-nowrap cursor-pointer group"
+              >
+                <span className="text-slate-500 font-mono">#{idx + 1}</span>
+                <span className="font-semibold text-slate-200 group-hover:text-amber-300">{bg.acLabel}</span>
+                <span className={`px-1 py-0.2 rounded font-bold text-[9px] ${
+                  bg.score >= 65 ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
+                }`}>
+                  {bg.score}
+                </span>
+                {bg.mla && (
+                  <span className="text-[9px] text-slate-400 bg-slate-900 px-1 rounded">
+                    {bg.mla.party}
+                  </span>
+                )}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -1404,58 +1468,58 @@ ${isRulingActive
       {/* Constituency Deep Dive & Dossier Export Modal */}
       {deepDiveAC && deepDiveData && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
-                  <Building2 size={24} />
+            <div className="p-4 px-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
+                  <Building2 size={22} />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-base text-white">{deepDiveData.acName}</h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-bold text-sm md:text-base text-white truncate">{deepDiveData.acName}</h3>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 shrink-0">
                       {deepDiveData.district}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">Micro-Constituency Vulnerability Profile & Field Charge-Sheet</p>
+                  <p className="text-[11px] text-slate-400 truncate">Constituency Vulnerability Profile & Ground Charge-Sheet</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {/* Print / Save PDF Button */}
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
                   title="Print / Save Clean A4 Dossier PDF"
                 >
                   <Printer size={13} />
-                  <span>Print A4</span>
+                  <span>Print</span>
                 </button>
 
                 {/* WhatsApp Batch Dispatch */}
                 <button
                   onClick={handleWhatsAppBatchDispatch}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
                   title="Send 3-Point Bulletin to WhatsApp Booth Groups"
                 >
                   <MessageCircle size={13} />
-                  <span>Forward Alert</span>
+                  <span>Forward</span>
                 </button>
 
                 {/* Copy Text Dossier */}
                 <button
                   onClick={handleExportACDossier}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
                   title="Copy Full A4 Briefing Dossier to Clipboard"
                 >
-                  {dossierExportCopied ? <Check size={14} className="text-emerald-300" /> : <FileText size={14} />}
-                  <span>{dossierExportCopied ? 'Copied' : 'Export Dossier'}</span>
+                  {dossierExportCopied ? <Check size={13} className="text-emerald-300" /> : <FileText size={13} />}
+                  <span>{dossierExportCopied ? 'Copied' : 'Export'}</span>
                 </button>
 
                 <button
                   onClick={() => setDeepDiveAC(null)}
-                  className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 cursor-pointer"
+                  className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 cursor-pointer ml-1"
                 >
                   <X size={18} />
                 </button>
@@ -1468,7 +1532,7 @@ ${isRulingActive
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
                   <span className="text-[10px] text-slate-500 block uppercase font-bold">Sitting MLA</span>
-                  <span className="font-bold text-sm text-slate-100 mt-0.5 block">
+                  <span className="font-bold text-sm text-slate-100 mt-0.5 block truncate">
                     {deepDiveData.mla ? deepDiveData.mla.mla_name : 'Data Ingesting...'}
                   </span>
                   <span className="text-[10px] font-bold text-amber-400 mt-1 block">
