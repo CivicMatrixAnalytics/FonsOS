@@ -36,7 +36,8 @@ import {
   PlusCircle,
   Send,
   Trash2,
-  CheckCircle2
+  CheckCircle2,
+  MapPin
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -117,6 +118,10 @@ export default function App() {
   const [deepDiveAC, setDeepDiveAC] = useState<string | null>(null);
   const [dossierExportCopied, setDossierExportCopied] = useState<boolean>(false);
 
+  // District-wide Aggregated Dossier Modal State
+  const [showDistrictDossier, setShowDistrictDossier] = useState<boolean>(false);
+  const [districtExportCopied, setDistrictExportCopied] = useState<boolean>(false);
+
   // Ground Report Submission Modal State
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [submittingReport, setSubmittingReport] = useState<boolean>(false);
@@ -165,15 +170,18 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('assembly_constituencies')
-        .select('ac_number, sitting_mla, party');
+        .select('*');
 
       if (!error && data) {
         const mapping: Record<string, MlaInfo> = {};
-        data.forEach((row) => {
-          if (row.sitting_mla) {
-            mapping[String(row.ac_number)] = {
-              mla_name: row.sitting_mla,
-              party: row.party || 'IND'
+        data.forEach((row: any) => {
+          const num = row.ac_number || row.ac_no;
+          const name = row.sitting_mla || row.mla_name;
+          const party = row.party || 'IND';
+          if (num && name) {
+            mapping[String(num)] = {
+              mla_name: name,
+              party: party
             };
           }
         });
@@ -188,9 +196,8 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('political_config')
-        .select('ruling_party, opposition_parties, election_cycle')
+        .select('*')
         .eq('is_active', true)
-        .order('created_at', { ascending: false })
         .limit(1)
         .single();
 
@@ -455,6 +462,61 @@ export default function App() {
     return null;
   }, [selectedDistrict, selectedConstituency, filteredIncidents]);
 
+  // District-wide Aggregated Intelligence Computation
+  const districtDossierData = useMemo(() => {
+    if (selectedDistrict === 'All') return null;
+
+    const distIncidents = incidents.filter((i) => i.district === selectedDistrict);
+    const antiCount = distIncidents.filter((i) => i.political_sentiment === 'anti_incumbency').length;
+    const defCount = distIncidents.filter((i) => i.political_sentiment === 'ruling_defense').length;
+    const neutralCount = distIncidents.filter((i) => i.political_sentiment === 'neutral').length;
+    const highCount = distIncidents.filter((i) => i.severity === 'High').length;
+
+    // Aggregate by AC inside this district
+    const acSummaryMap: Record<string, { count: number; high: number; anti: number; acNumber: number | null }> = {};
+    distIncidents.forEach((item) => {
+      const label = item.constituency || 'General District Area';
+      if (!acSummaryMap[label]) {
+        acSummaryMap[label] = { count: 0, high: 0, anti: 0, acNumber: item.ac_number || null };
+      }
+      acSummaryMap[label].count += 1;
+      if (item.severity === 'High') acSummaryMap[label].high += 1;
+      if (item.political_sentiment === 'anti_incumbency') acSummaryMap[label].anti += 1;
+    });
+
+    const acBreakdown = Object.entries(acSummaryMap).map(([acName, stats]) => {
+      const mla = getMlaDetails(stats.acNumber);
+      const score = Math.min(100, Math.max(20, (stats.high * 30) + (stats.anti * 25) + (stats.count * 15)));
+      return { acName, mla, score, ...stats };
+    }).sort((a, b) => b.score - a.score);
+
+    // Dominant Categories across District
+    const catMap: Record<string, number> = {};
+    distIncidents.forEach((item) => {
+      catMap[item.category] = (catMap[item.category] || 0) + 1;
+    });
+    const categoryBreakdown = Object.entries(catMap).map(([name, count]) => ({
+      name,
+      count,
+      percent: Math.round((count / (distIncidents.length || 1)) * 100)
+    })).sort((a, b) => b.count - a.count);
+
+    const overallScore = Math.min(100, Math.max(20, (highCount * 25) + (antiCount * 20) + (distIncidents.length * 10)));
+
+    return {
+      district: selectedDistrict,
+      totalIncidents: distIncidents.length,
+      antiCount,
+      defCount,
+      neutralCount,
+      highCount,
+      overallScore,
+      acBreakdown,
+      categoryBreakdown,
+      actionableIssues: distIncidents.filter((i) => i.is_actionable)
+    };
+  }, [selectedDistrict, incidents, mlaRegistry]);
+
   // Deep Dive AC Target Context Extraction with Smart Fallback & Category Breakdown
   const deepDiveData = useMemo(() => {
     if (!deepDiveAC) return null;
@@ -510,6 +572,73 @@ export default function App() {
     navigator.clipboard.writeText(text);
     setCopiedDraft(true);
     setTimeout(() => setCopiedDraft(false), 2000);
+  };
+
+  const handleExportDistrictDossier = () => {
+    if (!districtDossierData) return;
+
+    const acTable = districtDossierData.acBreakdown.map((ac, idx) => {
+      const mlaStr = ac.mla ? `${ac.mla.mla_name} (${ac.mla.party})` : 'Unassigned';
+      return `${idx + 1}. [${ac.acName}] Risk: ${ac.score}/100 | Issues: ${ac.count} | MLA: ${mlaStr}`;
+    }).join('\n');
+
+    const catSummary = districtDossierData.categoryBreakdown.map((c) => `- ${c.name}: ${c.percent}% (${c.count} incidents)`).join('\n');
+
+    const keyIssues = districtDossierData.actionableIssues.slice(0, 5).map((item, idx) => {
+      return `${idx + 1}. [${item.constituency || districtDossierData.district}] ${item.title}\n   Charge: ${item.attack_angle || item.summary}`;
+    }).join('\n\n');
+
+    const text = `======================================================================
+CIVIC MATRIX ANALYTICS - DISTRICT EXECUTIVE STRATEGIC INTELLIGENCE DOSSIER
+District: ${districtDossierData.district} | Election Cycle: ${politicalConfig.election_cycle}
+District Anti-Incumbency Vulnerability Score: ${districtDossierData.overallScore}/100
+Total Recorded Field Incidents: ${districtDossierData.totalIncidents}
+Generated At: ${new Date().toLocaleDateString('en-IN')}
+======================================================================
+
+I. CONSTITUENCY VULNERABILITY BREAKDOWN:
+${acTable || 'No constituency breakdowns available'}
+
+II. TOP DISTRICT CIVIC GRIEVANCE CLUSTERS:
+${catSummary || 'None documented'}
+
+III. HIGH-IMPACT DISTRICT GROUND CHARGE-SHEET:
+${keyIssues || 'No high severity charges recorded in this district.'}
+
+IV. CAMPAIGN COMMAND DIRECTIVE:
+${isRulingActive 
+  ? `Mobilize district welfare monitoring teams across high risk seats (${districtDossierData.acBreakdown[0]?.acName || districtDossierData.district}). Direct district administrative officers to address infrastructure grievances.`
+  : `Direct district campaign observers to coordinate door-to-door charge sheet distribution targeting sitting MLAs with vulnerability score > 60.`}
+======================================================================`;
+
+    navigator.clipboard.writeText(text);
+    setDistrictExportCopied(true);
+    setTimeout(() => setDistrictExportCopied(false), 2500);
+  };
+
+  const handleWhatsAppDistrictDispatch = () => {
+    if (!districtDossierData) return;
+
+    const topSeats = districtDossierData.acBreakdown.slice(0, 3).map((ac, idx) => {
+      const mla = ac.mla ? `(${ac.mla.party})` : '';
+      return `${idx + 1}. *${ac.acName}* ${mla} - Risk: ${ac.score}/100`;
+    }).join('\n');
+
+    const msg = `🚨 *[FONS-OS DISTRICT COMMAND BULLETIN - ${districtDossierData.district.toUpperCase()}]*
+📍 *மாவட்டம்:* ${districtDossierData.district}
+⚡ *மாவட்ட எதிர்ப்பு நிலை (Vulnerability):* ${districtDossierData.overallScore}/100
+📊 *பதிவான பிரச்சனைகள்:* ${districtDossierData.totalIncidents}
+
+🔥 *முக்கிய கவனிக்கப்பட வேண்டிய தொகுதிகள்:*
+${topSeats}
+
+📢 *களப்பணி உத்தரவு:*
+மாவட்ட அளவிலான தேர்தல் பொறுப்பாளர்கள் மேற்கண்ட தொகுதிகளில் தீவிர மக்கள் தொடர்பு பிரச்சாரத்தை தொடங்கவும்!
+============================
+_Civic Matrix Analytics War-Room_`;
+
+    const encoded = encodeURIComponent(msg);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
   const handleExportACDossier = () => {
@@ -794,7 +923,7 @@ ${isRulingActive
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {/* Ground Cadre Report Button */}
           <button
             onClick={() => setShowReportModal(true)}
@@ -805,7 +934,19 @@ ${isRulingActive
             <span>Ground Report</span>
           </button>
 
-          {/* Deep Dive Action Button (If AC is Selected in filter) */}
+          {/* District Intelligence Dossier Button (Appears when District is Selected) */}
+          {selectedDistrict !== 'All' && !isPublic && (
+            <button
+              onClick={() => setShowDistrictDossier(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 transition-all cursor-pointer shadow-sm"
+              title="Examine District-wide Consolidated Intelligence Dossier"
+            >
+              <MapPin size={14} />
+              <span>{selectedDistrict} Dossier</span>
+            </button>
+          )}
+
+          {/* Single AC Deep Dive Action Button (If AC is Selected in filter) */}
           {selectedConstituency !== 'All' && !isPublic && (
             <button
               onClick={() => setDeepDiveAC(selectedConstituency)}
@@ -869,7 +1010,7 @@ ${isRulingActive
                   </optgroup>
                 </select>
               ) : (
-                <span className="text-amber-400 font-bold">{warRoomLens} (Candidate View)</span>
+                <span className="text-amber-400 font-bold">{warRoomLens}</span>
               )}
             </div>
           )}
@@ -883,7 +1024,7 @@ ${isRulingActive
               title="Generate Synthesized AI War-Room Briefing"
             >
               {dossierCopied ? <Check size={14} className="text-emerald-400" /> : <BrainCircuit size={14} />}
-              <span>{dossierCopied ? 'Briefing Copied!' : 'AI Executive Brief'}</span>
+              <span>{dossierCopied ? 'Copied' : 'AI Brief'}</span>
             </button>
           )}
 
@@ -902,7 +1043,7 @@ ${isRulingActive
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-950/60 border border-rose-800/80 text-rose-300 hover:bg-rose-900/60 transition-all cursor-pointer"
             >
               <Unlock size={14} />
-              <span>Exit War-Room</span>
+              <span>Exit</span>
             </button>
           )}
 
@@ -915,7 +1056,6 @@ ${isRulingActive
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200 transition-all cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
           </button>
         </div>
       </header>
@@ -1717,6 +1857,136 @@ ${isRulingActive
           </div>
         )}
       </div>
+
+      {/* District-wide Aggregated Executive Dossier Modal */}
+      {showDistrictDossier && districtDossierData && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 px-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-indigo-400">
+                  <MapPin size={22} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-white">{districtDossierData.district} District Strategic Command Dossier</h3>
+                  <p className="text-xs text-slate-400">Consolidated Multi-Constituency Ground Assessment</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  <Printer size={13} />
+                  <span>Print</span>
+                </button>
+                <button
+                  onClick={handleWhatsAppDistrictDispatch}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  <MessageCircle size={13} />
+                  <span>Forward</span>
+                </button>
+                <button
+                  onClick={handleExportDistrictDossier}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                >
+                  {districtExportCopied ? <Check size={13} className="text-emerald-300" /> : <FileText size={13} />}
+                  <span>{districtExportCopied ? 'Copied' : 'Export'}</span>
+                </button>
+                <button
+                  onClick={() => setShowDistrictDossier(false)}
+                  className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer ml-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+              <div className="grid grid-cols-4 gap-3">
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">District Score</span>
+                  <div className="text-base font-black text-amber-400 mt-1">{districtDossierData.overallScore}/100</div>
+                  <span className="text-[10px] text-slate-400">Anti-Incumbency Index</span>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Recorded Issues</span>
+                  <div className="text-base font-black text-slate-100 mt-1">{districtDossierData.totalIncidents}</div>
+                  <span className="text-[10px] text-rose-400">{districtDossierData.highCount} High Priority</span>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Constituencies</span>
+                  <div className="text-base font-black text-slate-100 mt-1">{districtDossierData.acBreakdown.length}</div>
+                  <span className="text-[10px] text-slate-400">Mapped Segments</span>
+                </div>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Sentiment Split</span>
+                  <div className="text-[11px] font-bold text-slate-300 mt-1 flex items-center gap-1.5">
+                    <span className="text-rose-400">⚡ {districtDossierData.antiCount}</span>
+                    <span>•</span>
+                    <span className="text-emerald-400">🛡️ {districtDossierData.defCount}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">{districtDossierData.neutralCount} Neutral</span>
+                </div>
+              </div>
+
+              {/* Constituency Matrix Table */}
+              <div className="space-y-2">
+                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Building2 size={14} className="text-amber-500" />
+                  <span>Constituency Vulnerability Matrix ({districtDossierData.district})</span>
+                </h4>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800 text-[10px] uppercase font-bold">
+                      <tr>
+                        <th className="p-2.5">Constituency</th>
+                        <th className="p-2.5">Sitting MLA</th>
+                        <th className="p-2.5">Party</th>
+                        <th className="p-2.5 text-center">Incidents</th>
+                        <th className="p-2.5 text-right">Risk Score</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      {districtDossierData.acBreakdown.map((ac) => (
+                        <tr key={ac.acName} className="hover:bg-slate-900/50">
+                          <td className="p-2.5 font-semibold text-white">{ac.acName}</td>
+                          <td className="p-2.5 text-slate-400">{ac.mla?.mla_name || 'N/A'}</td>
+                          <td className="p-2.5">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-amber-300">
+                              {ac.mla?.party || 'IND'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-center font-mono">{ac.count}</td>
+                          <td className="p-2.5 text-right font-black">
+                            <span className={`px-2 py-0.5 rounded ${
+                              ac.score >= 65 ? 'bg-rose-500/20 text-rose-300' : 'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {ac.score}/100
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">Civic Matrix Analytics • Field Intelligence Unit</span>
+              <button
+                onClick={() => setShowDistrictDossier(false)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ground Cadre Grievance Submission Modal */}
       {showReportModal && (
