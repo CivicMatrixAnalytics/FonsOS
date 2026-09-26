@@ -38,7 +38,8 @@ import {
   Trash2,
   CheckCircle2,
   MapPin,
-  Layers
+  Layers,
+  Clock
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -55,6 +56,7 @@ interface Incident {
   source_outlet: string;
   proof_url: string;
   incident_date: string;
+  created_at?: string;
   is_actionable?: boolean;
   strategic_tag?: string;
   attack_angle?: string;
@@ -104,6 +106,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
+
+  // Freshness Indicator State
+  const [lastSyncedText, setLastSyncedText] = useState<string>('Syncing...');
 
   // Role & Authentication States
   const [userRole, setUserRole] = useState<UserRole>('public');
@@ -169,6 +174,29 @@ export default function App() {
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
+
+  // Helper to format relative time
+  const calculateFreshness = (dateStr?: string) => {
+    if (!dateStr) {
+      setLastSyncedText('Recently');
+      return;
+    }
+    const incidentTime = new Date(dateStr).getTime();
+    const now = new Date().getTime();
+    const diffMs = now - incidentTime;
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMins / 60);
+
+    if (diffMins < 2) {
+      setLastSyncedText('Just now');
+    } else if (diffMins < 60) {
+      setLastSyncedText(`${diffMins}m ago`);
+    } else if (diffHours < 24) {
+      setLastSyncedText(`${diffHours}h ago`);
+    } else {
+      setLastSyncedText(new Date(dateStr).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }));
+    }
+  };
 
   // Load TN Assembly Constituencies GeoJSON
   useEffect(() => {
@@ -241,7 +269,13 @@ export default function App() {
         .order('incident_date', { ascending: false });
 
       if (error) throw error;
-      setIncidents(data || []);
+      const loadedData = (data as Incident[]) || [];
+      setIncidents(loadedData);
+
+      if (loadedData.length > 0) {
+        const latestDate = loadedData[0]?.created_at || loadedData[0]?.incident_date;
+        calculateFreshness(latestDate);
+      }
     } catch (err) {
       console.error('Error fetching incidents:', err);
     } finally {
@@ -263,6 +297,7 @@ export default function App() {
           const newIncident = payload.new as Incident;
           setIncidents((prev) => [newIncident, ...prev]);
           setRealtimeAlert(newIncident.title);
+          calculateFreshness(newIncident.created_at || newIncident.incident_date);
           setTimeout(() => setRealtimeAlert(null), 4500);
         }
       )
@@ -553,12 +588,10 @@ export default function App() {
   const deepDiveData = useMemo(() => {
     if (!deepDiveAC) return null;
 
-    // Clean target name: Handles "AC 197: Usilampatti" or "Usilampatti"
     const targetClean = deepDiveAC.includes(':') 
       ? deepDiveAC.split(':')[1].trim().toLowerCase() 
       : deepDiveAC.trim().toLowerCase();
 
-    // Match incidents by exact name, sub-string, or AC label
     const acIncidents = incidents.filter((i) => {
       if (!i.constituency) return false;
       const cName = i.constituency.trim().toLowerCase();
@@ -569,7 +602,6 @@ export default function App() {
     const sample = acIncidents[0] || null;
     let acNum = sample?.ac_number || null;
 
-    // Fallback AC number extraction from deepDiveAC string if available
     if (!acNum && deepDiveAC.includes('AC ')) {
       const match = deepDiveAC.match(/AC\s+(\d+)/i);
       if (match && match[1]) {
@@ -871,7 +903,9 @@ ${isRulingActive
       }, 1500);
 
       if (data && data[0]) {
-        setIncidents((prev) => [data[0] as Incident, ...prev]);
+        const item = data[0] as Incident;
+        setIncidents((prev) => [item, ...prev]);
+        calculateFreshness(item.created_at || item.incident_date);
       }
     } catch (err) {
       console.error('Error submitting ground incident:', err);
@@ -949,13 +983,13 @@ ${isRulingActive
 
     if (acData) {
       if (acData.score >= 65) {
-        fillColor = '#ef4444'; // Red Flashpoint
+        fillColor = '#ef4444';
         fillOpacity = 0.45;
       } else if (acData.score >= 35) {
-        fillColor = '#f59e0b'; // Amber Battleground
+        fillColor = '#f59e0b';
         fillOpacity = 0.35;
       } else {
-        fillColor = '#10b981'; // Moderate Green
+        fillColor = '#10b981';
         fillOpacity = 0.25;
       }
     }
@@ -992,7 +1026,6 @@ ${isRulingActive
         l.setStyle(getChoroplethStyle(feature));
       },
       click: () => {
-        // Direct click trigger with full label format matching deepDiveAC
         setDeepDiveAC(label);
       }
     });
@@ -1029,10 +1062,16 @@ ${isRulingActive
               }`}>
                 {isPublic ? 'TN HYPERLOCAL FEED' : `${politicalConfig.election_cycle} WAR-ROOM INTEL`}
               </span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                LIVE SYNC
-              </span>
+              
+              {/* Feature 1: Dynamic Freshness Indicator Pill */}
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                </span>
+                <Clock size={10} className="text-emerald-400" />
+                <span>Synced: <strong className="text-white font-bold">{lastSyncedText}</strong></span>
+              </div>
             </div>
             <p className="text-xs text-slate-400">
               {isPublic 
@@ -1053,7 +1092,7 @@ ${isRulingActive
             <span>Ground Report</span>
           </button>
 
-          {/* District Intelligence Dossier Button (Appears when District is Selected) */}
+          {/* District Intelligence Dossier Button */}
           {selectedDistrict !== 'All' && !isPublic && (
             <button
               onClick={() => setShowDistrictDossier(true)}
@@ -1065,7 +1104,7 @@ ${isRulingActive
             </button>
           )}
 
-          {/* Single AC Deep Dive Action Button (If AC is Selected in filter) */}
+          {/* Single AC Deep Dive Action Button */}
           {selectedConstituency !== 'All' && !isPublic && (
             <button
               onClick={() => setDeepDiveAC(selectedConstituency)}
@@ -1114,7 +1153,7 @@ ${isRulingActive
             </div>
           )}
 
-          {/* War-Room Lens Selector (Authorized Only) */}
+          {/* War-Room Lens Selector */}
           {!isPublic && (
             <div className="flex items-center bg-slate-950/80 border border-slate-700 rounded-lg px-2.5 py-1 text-xs">
               <span className="text-slate-400 mr-2">Lens:</span>
@@ -1148,7 +1187,7 @@ ${isRulingActive
             </div>
           )}
 
-          {/* AI Executive Brief (Authorized Only) */}
+          {/* AI Executive Brief */}
           {!isPublic && (
             <button
               onClick={handleGenerateExecutiveBrief}
@@ -1193,7 +1232,7 @@ ${isRulingActive
         </div>
       </header>
 
-      {/* Tactical Banner (War-Room Only) */}
+      {/* Tactical Banner */}
       {!isPublic && (
         <div
           className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between border-b ${
@@ -1213,7 +1252,6 @@ ${isRulingActive
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* Clickable Admin Verification Pending Button */}
             {userRole === 'admin' && pendingCount > 0 && (
               <button
                 onClick={() => setFilterPendingOnly(!filterPendingOnly)}
@@ -1243,7 +1281,7 @@ ${isRulingActive
         </div>
       )}
 
-      {/* Top 10 Battleground Flashpoints Ticker (War-Room Only) */}
+      {/* Top 10 Battleground Flashpoints Ticker */}
       {!isPublic && top10Battlegrounds.length > 0 && (
         <div className="px-4 py-1.5 bg-slate-900 border-b border-slate-800 flex items-center gap-2 text-xs overflow-x-auto">
           <div className="flex items-center gap-1 text-[11px] font-bold text-amber-400 whitespace-nowrap mr-1">
@@ -1275,7 +1313,7 @@ ${isRulingActive
         </div>
       )}
 
-      {/* Dynamic 234 Assembly Seat Share Tally Bar (War-Room Only) */}
+      {/* Dynamic 234 Assembly Seat Share Tally Bar */}
       {!isPublic && (
         <StateTallyBar
           selectedParty={selectedPartyFilter}
@@ -1288,7 +1326,6 @@ ${isRulingActive
         {/* Left Side: Filterable Feed */}
         <div className="w-[430px] flex flex-col border-r border-slate-800 bg-slate-900/60 backdrop-blur z-10">
           <div className="p-3 border-b border-slate-800 space-y-2 bg-slate-900/90">
-            {/* Quick Pending Review Banner in Feed */}
             {filterPendingOnly && (
               <div className="p-2 bg-amber-500/15 border border-amber-500/40 rounded-lg flex items-center justify-between text-xs">
                 <span className="text-amber-300 font-bold flex items-center gap-1.5">
@@ -1446,14 +1483,12 @@ ${isRulingActive
                         </span>
                       )}
 
-                      {/* Verification Status Pill for War Room */}
                       {!isPublic && isPending && (
                         <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 border border-amber-300 shadow-sm animate-pulse">
                           Pending Review
                         </span>
                       )}
 
-                      {/* Strategic Badges only visible in War Room */}
                       {!isPublic && (
                         <>
                           {mla && !isRulingActive && isRulingMla && (
@@ -1560,7 +1595,6 @@ ${isRulingActive
               filterCoord={filterCoord} 
             />
 
-            {/* 234 AC Boundary GeoJSON Choropleth Layer */}
             {geoJsonData && (
               <GeoJSON
                 key={`geojson-layer-${showChoropleth}-${Object.keys(acScoreLookup).length}`}
@@ -1570,7 +1604,6 @@ ${isRulingActive
               />
             )}
 
-            {/* Incident Markers Overlay */}
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
@@ -1973,7 +2006,6 @@ ${isRulingActive
                 <ExternalLink size={13} />
               </a>
 
-              {/* Admin Moderation Controls */}
               {userRole === 'admin' && (
                 <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
                   {selectedIncident.verification_status === 'pending' && (
