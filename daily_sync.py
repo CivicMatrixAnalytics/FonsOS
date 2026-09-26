@@ -15,6 +15,7 @@ from google.genai import types
 from google.genai.errors import APIError
 from supabase import create_client, Client
 from geo_resolver import resolve_constituency
+from engine.taxonomy_matrix import analyze_incident_taxonomy
 
 # ---------------------------------------------------------
 # Environment & Client Setup
@@ -174,7 +175,7 @@ def fetch_rss_articles():
                             "link": link.strip(),
                             "source": outlet.strip()
                         })
-        except Exception as e:
+        except Exception:
             pass
             
     print(f"Collected {len(articles)} unique raw news items across all Tamil & English media outlets.")
@@ -286,7 +287,7 @@ def run_daily_sync():
             summary_text = intel.get("summary") or orig_item.get("title", "")
             full_text = f"{title_text} {summary_text}".strip()
 
-            # PRIMARY STEP: Dynamic GeoHierarchyResolver (Zero Hardcoding)
+            # PRIMARY STEP 1: Dynamic GeoHierarchyResolver
             geo_res = resolve_constituency(district=district, raw_text=full_text)
             
             if geo_res and geo_res.get("constituency"):
@@ -309,19 +310,28 @@ def run_daily_sync():
                 if match:
                     ac_num = match.get("ac_number")
 
+            # PRIMARY STEP 2: Pure Additive Taxonomy Intelligence Layer
+            tax_intel = analyze_incident_taxonomy(title=title_text, summary=summary_text)
+
+            # Resolve Category safely: If taxonomy detected high-priority category, map its proper name
+            final_category = tax_intel.get("category_name") or intel.get("category", "Civic Grievance")
+            
+            # Severity: Use taxonomy severity if elevated to 'High', else respect Gemini
+            final_severity = "High" if tax_intel.get("severity") == "High" else intel.get("severity", "Medium")
+
             payload = {
                 "title": title_text,
                 "summary": summary_text,
                 "district": district,
                 "latitude": coords[0],
                 "longitude": coords[1],
-                "category": intel.get("category", "Civic Grievance"),
-                "severity": intel.get("severity", "Medium"),
+                "category": final_category,
+                "severity": final_severity,
                 "source_outlet": orig_item["source"],
                 "proof_url": orig_item["link"],
                 "incident_date": today_str,
                 "is_actionable": bool(intel.get("is_actionable", True)),
-                "strategic_tag": intel.get("strategic_tag", "Local Issue"),
+                "strategic_tag": intel.get("strategic_tag") or tax_intel.get("subcategory") or "Local Issue",
                 "attack_angle": intel.get("attack_angle", ""),
                 "defense_angle": intel.get("defense_angle", ""),
                 "constituency": ac_name,
@@ -331,7 +341,7 @@ def run_daily_sync():
 
             try:
                 supabase.from_("incidents").insert(payload).execute()
-                print(f"-> [SUCCESS] Ingested: {payload['title'][:40]} | [{payload['political_sentiment']}] | AC: {payload['ac_number'] or 'N/A'} ({payload['constituency'] or 'Unassigned'})")
+                print(f"-> [SUCCESS] Ingested: {payload['title'][:35]} | [{payload['category']}] | [{payload['severity']}] | AC: {payload['ac_number'] or 'N/A'} ({payload['constituency'] or 'Unassigned'})")
                 inserted_count += 1
             except Exception as e:
                 print(f"-> [ERROR] Supabase insert notice: {e}")
