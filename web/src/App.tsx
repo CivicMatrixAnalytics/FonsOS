@@ -4,7 +4,7 @@ import {
   TileLayer, 
   CircleMarker, 
   Popup, 
-  GeoJSON,
+  GeoJSON, 
   useMap 
 } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -103,6 +103,7 @@ function MapViewController({
 export default function App() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [mlaRegistry, setMlaRegistry] = useState<Record<string, MlaInfo>>({});
+  const [districtAcMap, setDistrictAcMap] = useState<Record<string, { ac_number: number; ac_name: string }[]>>({});
   const [loading, setLoading] = useState(true);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
   const [activeTab, setActiveTab] = useState<'details' | 'attack' | 'defense'>('details');
@@ -175,7 +176,7 @@ export default function App() {
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
 
-  // Helper to format relative time
+  // Dynamic Relative Time Calculation
   const calculateFreshness = (dateStr?: string) => {
     if (!dateStr) {
       setLastSyncedText('Recently');
@@ -209,27 +210,40 @@ export default function App() {
       .catch((err) => console.warn('Could not load GeoJSON boundary layer:', err));
   }, []);
 
-  // Dynamic MLA Fetch from Supabase
+  // Dynamic MLA & Hierarchy Fetch from Supabase
   const fetchMlaRegistry = async () => {
     try {
       const { data, error } = await supabase
         .from('assembly_constituencies')
-        .select('*');
+        .select('*')
+        .order('ac_number', { ascending: true });
 
       if (!error && data) {
         const mapping: Record<string, MlaInfo> = {};
+        const dMap: Record<string, { ac_number: number; ac_name: string }[]> = {};
+
         data.forEach((row: any) => {
           const num = row.ac_number || row.ac_no;
           const name = row.sitting_mla || row.mla_name;
           const party = row.party || 'IND';
+          const dist = row.district;
+          const acName = row.ac_name || row.constituency_name;
+
           if (num && name) {
             mapping[String(num)] = {
               mla_name: name,
               party: party
             };
           }
+
+          if (dist && acName && num) {
+            if (!dMap[dist]) dMap[dist] = [];
+            dMap[dist].push({ ac_number: num, ac_name: acName });
+          }
         });
+
         setMlaRegistry(mapping);
+        setDistrictAcMap(dMap);
       }
     } catch (e) {
       console.error('Error fetching dynamic MLA registry:', e);
@@ -363,7 +377,15 @@ export default function App() {
     return ['All', ...list.sort()];
   }, [incidents]);
 
+  // Feature 2: Hierarchical Cascade Constituency List
   const constituencyList = useMemo(() => {
+    if (selectedDistrict !== 'All' && districtAcMap[selectedDistrict]) {
+      const list = districtAcMap[selectedDistrict].map(
+        (item) => `AC ${item.ac_number}: ${item.ac_name}`
+      );
+      return ['All', ...list];
+    }
+
     const relevant = selectedDistrict === 'All' 
       ? incidents 
       : incidents.filter((i) => i.district === selectedDistrict);
@@ -376,7 +398,7 @@ export default function App() {
       )
     );
     return ['All', ...acs.sort()];
-  }, [incidents, selectedDistrict]);
+  }, [incidents, selectedDistrict, districtAcMap]);
 
   const filteredIncidents = useMemo(() => {
     const now = new Date('2026-09-26').getTime();
@@ -1352,12 +1374,13 @@ ${isRulingActive
               />
             </div>
 
+            {/* Feature 2: Hierarchical Cascade Dropdowns */}
             <div className="grid grid-cols-2 gap-2">
               <select
                 value={selectedDistrict}
                 onChange={(e) => {
                   setSelectedDistrict(e.target.value);
-                  setSelectedConstituency('All');
+                  setSelectedConstituency('All'); // Auto reset constituency on district switch
                 }}
                 className="bg-slate-950/80 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-amber-500"
               >
