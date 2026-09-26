@@ -4,6 +4,7 @@ import {
   TileLayer, 
   CircleMarker, 
   Popup, 
+  GeoJSON,
   useMap 
 } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -31,13 +32,13 @@ import {
   FileText,
   BarChart3,
   Printer,
-  PieChart,
   TrendingUp,
   PlusCircle,
   Send,
   Trash2,
   CheckCircle2,
-  MapPin
+  MapPin,
+  Layers
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { StateTallyBar } from './components/StateTallyBar';
@@ -122,6 +123,10 @@ export default function App() {
   const [showDistrictDossier, setShowDistrictDossier] = useState<boolean>(false);
   const [districtExportCopied, setDistrictExportCopied] = useState<boolean>(false);
 
+  // GeoJSON 234 AC Choropleth Layer States
+  const [geoJsonData, setGeoJsonData] = useState<any>(null);
+  const [showChoropleth, setShowChoropleth] = useState<boolean>(true);
+
   // Ground Report Submission Modal State
   const [showReportModal, setShowReportModal] = useState<boolean>(false);
   const [submittingReport, setSubmittingReport] = useState<boolean>(false);
@@ -164,6 +169,17 @@ export default function App() {
   const [copiedDraft, setCopiedDraft] = useState<boolean>(false);
   const [dossierCopied, setDossierCopied] = useState<boolean>(false);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
+
+  // Load TN Assembly Constituencies GeoJSON
+  useEffect(() => {
+    fetch('/data/tn_ac.geojson')
+      .then((res) => {
+        if (!res.ok) throw new Error('tn_ac.geojson not found in public/data');
+        return res.json();
+      })
+      .then((data) => setGeoJsonData(data))
+      .catch((err) => console.warn('Could not load GeoJSON boundary layer:', err));
+  }, []);
 
   // Dynamic MLA Fetch from Supabase
   const fetchMlaRegistry = async () => {
@@ -331,17 +347,14 @@ export default function App() {
     const now = new Date('2026-09-26').getTime();
 
     return incidents.filter((inc) => {
-      // Direct Pending Quick Review Filter
       if (filterPendingOnly && !isPublic) {
         return inc.verification_status === 'pending';
       }
 
-      // 1. PUBLIC RESTRICTION: Do not show pending unverified incidents to the public
       if (isPublic && inc.verification_status === 'pending') {
         return false;
       }
 
-      // 2. PUBLIC RESTRICTION: strictly Today & Yesterday (<= 48 Hours)
       if (isPublic && inc.incident_date) {
         const incTime = new Date(inc.incident_date).getTime();
         const diffDays = (now - incTime) / (1000 * 3600 * 24);
@@ -380,12 +393,34 @@ export default function App() {
     });
   }, [incidents, isPublic, filterPendingOnly, selectedDistrict, selectedConstituency, selectedCategory, selectedSentiment, selectedPartyFilter, actionableOnly, searchQuery, timeFilter, mlaRegistry]);
 
-  // Pending count for Admin Review
+  // Aggregate Vulnerability Scores per AC for GeoJSON Choropleth
+  const acScoreLookup = useMemo(() => {
+    const scores: Record<string, { score: number; count: number; high: number; anti: number; acName: string; acNumber: number | null }> = {};
+
+    incidents.forEach((item) => {
+      if (!item.constituency) return;
+      const cleanName = item.constituency.trim().toLowerCase();
+      if (!scores[cleanName]) {
+        scores[cleanName] = { score: 20, count: 0, high: 0, anti: 0, acName: item.constituency, acNumber: item.ac_number || null };
+      }
+      scores[cleanName].count += 1;
+      if (item.severity === 'High') scores[cleanName].high += 1;
+      if (item.political_sentiment === 'anti_incumbency') scores[cleanName].anti += 1;
+    });
+
+    Object.keys(scores).forEach((key) => {
+      const itm = scores[key];
+      const raw = (itm.high * 35) + (itm.anti * 25) + (itm.count * 15);
+      itm.score = Math.min(100, Math.max(20, raw));
+    });
+
+    return scores;
+  }, [incidents]);
+
   const pendingCount = useMemo(() => {
     return incidents.filter((i) => i.verification_status === 'pending').length;
   }, [incidents]);
 
-  // Flashpoints calculation (only for authorized war room)
   const flashpointCounts = useMemo(() => {
     if (isPublic) return {};
     const mapCount: Record<string, number> = {};
@@ -402,7 +437,6 @@ export default function App() {
     return Object.entries(flashpointCounts).filter(([_, count]) => count >= 5);
   }, [flashpointCounts]);
 
-  // Top 10 Battleground Constituencies Ranking
   const top10Battlegrounds = useMemo(() => {
     if (isPublic) return [];
     const acGroups: Record<string, { count: number; high: number; anti: number; acNumber: number | null }> = {};
@@ -472,7 +506,6 @@ export default function App() {
     const neutralCount = distIncidents.filter((i) => i.political_sentiment === 'neutral').length;
     const highCount = distIncidents.filter((i) => i.severity === 'High').length;
 
-    // Aggregate by AC inside this district
     const acSummaryMap: Record<string, { count: number; high: number; anti: number; acNumber: number | null }> = {};
     distIncidents.forEach((item) => {
       const label = item.constituency || 'General District Area';
@@ -490,7 +523,6 @@ export default function App() {
       return { acName, mla, score, ...stats };
     }).sort((a, b) => b.score - a.score);
 
-    // Dominant Categories across District
     const catMap: Record<string, number> = {};
     distIncidents.forEach((item) => {
       catMap[item.category] = (catMap[item.category] || 0) + 1;
@@ -884,6 +916,77 @@ ${isRulingActive
     }
   };
 
+  // GeoJSON Choropleth Styling & Interaction Callback
+  const getChoroplethStyle = (feature: any) => {
+    if (!showChoropleth) {
+      return { fillOpacity: 0, weight: 0.8, color: '#334155' };
+    }
+
+    const props = feature?.properties || {};
+    const rawAcName = props.ac_name || props.AC_NAME || props.NAME || '';
+    const cleanKey = rawAcName.trim().toLowerCase();
+    const acData = acScoreLookup[cleanKey];
+
+    let fillColor = '#334155';
+    let fillOpacity = 0.15;
+
+    if (acData) {
+      if (acData.score >= 65) {
+        fillColor = '#ef4444'; // Red Flashpoint
+        fillOpacity = 0.45;
+      } else if (acData.score >= 35) {
+        fillColor = '#f59e0b'; // Amber Battleground
+        fillOpacity = 0.35;
+      } else {
+        fillColor = '#10b981'; // Moderate Green
+        fillOpacity = 0.25;
+      }
+    }
+
+    return {
+      fillColor,
+      weight: 1,
+      opacity: 0.8,
+      color: '#64748b',
+      fillOpacity
+    };
+  };
+
+  const onEachGeoFeature = (feature: any, layer: any) => {
+    const props = feature?.properties || {};
+    const rawAcName = props.ac_name || props.AC_NAME || props.NAME || 'Constituency';
+    const acNum = props.ac_no || props.AC_NO || '';
+    const cleanKey = rawAcName.trim().toLowerCase();
+    const acData = acScoreLookup[cleanKey];
+
+    const label = acNum ? `AC ${acNum}: ${rawAcName}` : rawAcName;
+
+    layer.on({
+      mouseover: (e: any) => {
+        const l = e.target;
+        l.setStyle({
+          weight: 2.5,
+          color: '#f8fafc',
+          fillOpacity: 0.65
+        });
+      },
+      mouseout: (e: any) => {
+        const l = e.target;
+        l.setStyle(getChoroplethStyle(feature));
+      },
+      click: () => {
+        if (!isPublic) {
+          setDeepDiveAC(label);
+        }
+      }
+    });
+
+    layer.bindTooltip(
+      `<div class="font-sans text-xs"><b>${label}</b><br/>Vulnerability: ${acData ? `${acData.score}/100` : 'Baseline (20/100)'}</div>`,
+      { sticky: true, className: 'leaflet-tooltip-dark' }
+    );
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
       {/* Realtime Alert Notification Toast */}
@@ -956,6 +1059,20 @@ ${isRulingActive
               <span>AC Intel Dossier</span>
             </button>
           )}
+
+          {/* Choropleth Layer Quick Toggle */}
+          <button
+            onClick={() => setShowChoropleth(!showChoropleth)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
+              showChoropleth
+                ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+            title="Toggle 234 Assembly Boundary Choropleth"
+          >
+            <Layers size={13} />
+            <span>Choropleth</span>
+          </button>
 
           {/* Public Badge vs Time Scope */}
           {isPublic ? (
@@ -1409,7 +1526,7 @@ ${isRulingActive
           </div>
         </div>
 
-        {/* Center: Interactive Leaflet Map */}
+        {/* Center: Interactive Leaflet Map with 234 AC GeoJSON Boundaries */}
         <div className="flex-1 h-full relative z-0">
           <MapContainer
             center={[11.1271, 78.6569]}
@@ -1427,6 +1544,17 @@ ${isRulingActive
               filterCoord={filterCoord} 
             />
 
+            {/* 234 AC Boundary GeoJSON Choropleth Layer */}
+            {geoJsonData && (
+              <GeoJSON
+                key={`geojson-layer-${showChoropleth}-${Object.keys(acScoreLookup).length}`}
+                data={geoJsonData}
+                style={getChoroplethStyle}
+                onEachFeature={onEachGeoFeature}
+              />
+            )}
+
+            {/* Incident Markers Overlay */}
             {filteredIncidents.map((incident) => {
               const isSelected = selectedIncident?.id === incident.id;
               const isActionable = incident.is_actionable;
@@ -1988,234 +2116,56 @@ ${isRulingActive
         </div>
       )}
 
-      {/* Ground Cadre Grievance Submission Modal */}
-      {showReportModal && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
-            <div className="p-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
-                  <PlusCircle size={20} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-white">Ground Cadre Incident Dispatch</h3>
-                  <p className="text-[11px] text-slate-400">
-                    {userRole === 'admin' ? 'Immediate Verified Ingestion' : 'Submitted for Intelligence Verification'}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowReportModal(false)}
-                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitGroundReport} className="p-5 space-y-3.5 text-xs">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Issue Title / Headline *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. குடிநீர் குழாய் உடைந்து சாலை சேதம் - பொதுமக்கள் மறியல்"
-                  value={reportForm.title}
-                  onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                    District *
-                  </label>
-                  <select
-                    value={reportForm.district}
-                    onChange={(e) => setReportForm({ ...reportForm, district: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                  >
-                    {districtList.filter((d) => d !== 'All').map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                    Assembly Constituency
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Madurai Central"
-                    value={reportForm.constituency}
-                    onChange={(e) => setReportForm({ ...reportForm, constituency: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                    Category *
-                  </label>
-                  <select
-                    value={reportForm.category}
-                    onChange={(e) => setReportForm({ ...reportForm, category: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="Civic Grievance">Civic Grievance</option>
-                    <option value="Governance">Governance</option>
-                    <option value="Law & Order">Law & Order</option>
-                    <option value="Public Health">Public Health</option>
-                    <option value="Infrastructure">Infrastructure</option>
-                    <option value="Education">Education</option>
-                    <option value="Agriculture">Agriculture</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                    Severity Level
-                  </label>
-                  <select
-                    value={reportForm.severity}
-                    onChange={(e) => setReportForm({ ...reportForm, severity: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="High">High (Immediate Flashpoint)</option>
-                    <option value="Medium">Medium (Ward Level)</option>
-                    <option value="Low">Low (General Observation)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Ground Details & Grievance Summary *
-                </label>
-                <textarea
-                  required
-                  rows={3}
-                  placeholder="விவரங்கள் மற்றும் கள நிலவரம்..."
-                  value={reportForm.summary}
-                  onChange={(e) => setReportForm({ ...reportForm, summary: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Proof Link / Photo URL / News Report
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://... (Optional)"
-                  value={reportForm.proof_url}
-                  onChange={(e) => setReportForm({ ...reportForm, proof_url: e.target.value })}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              {reportSuccess && (
-                <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
-                  <Check size={16} />
-                  <span>
-                    {userRole === 'admin' 
-                      ? 'Ground incident ingested and published successfully!' 
-                      : 'Incident submitted to War-Room Verification Queue!'}
-                  </span>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowReportModal(false)}
-                  className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingReport || reportSuccess}
-                  className="flex-1 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white transition-all cursor-pointer shadow-md flex items-center justify-center gap-1.5"
-                >
-                  {submittingReport ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
-                  <span>{submittingReport ? 'Dispatching...' : 'Dispatch Issue'}</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Constituency Deep Dive & Dossier Export Modal */}
+      {/* Constituency Deep Dive Modal */}
       {deepDiveAC && deepDiveData && (
         <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            {/* Modal Header */}
             <div className="p-4 px-5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
                   <Building2 size={22} />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-sm md:text-base text-white truncate">{deepDiveData.acName}</h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 shrink-0">
-                      {deepDiveData.district}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 truncate">Constituency Vulnerability Profile & Ground Charge-Sheet</p>
+                <div>
+                  <h3 className="font-bold text-base text-white">{deepDiveData.acName}</h3>
+                  <p className="text-[11px] text-slate-400">{deepDiveData.district} District</p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                  title="Print / Save Clean A4 Dossier PDF"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer"
                 >
                   <Printer size={13} />
                   <span>Print</span>
                 </button>
-
                 <button
                   onClick={handleWhatsAppBatchDispatch}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
-                  title="Send 3-Point Bulletin to WhatsApp Booth Groups"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer"
                 >
                   <MessageCircle size={13} />
                   <span>Forward</span>
                 </button>
-
                 <button
                   onClick={handleExportACDossier}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all shadow cursor-pointer"
-                  title="Copy Full A4 Briefing Dossier to Clipboard"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold cursor-pointer"
                 >
                   {dossierExportCopied ? <Check size={13} className="text-emerald-300" /> : <FileText size={13} />}
                   <span>{dossierExportCopied ? 'Copied' : 'Export'}</span>
                 </button>
-
                 <button
                   onClick={() => setDeepDiveAC(null)}
-                  className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 cursor-pointer ml-1"
+                  className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer ml-1"
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs">
               <div className="grid grid-cols-3 gap-3">
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Sitting MLA</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Sitting MLA</span>
                   <span className="font-bold text-sm text-slate-100 mt-0.5 block truncate">
                     {deepDiveData.mla ? deepDiveData.mla.mla_name : 'Data Ingesting...'}
                   </span>
@@ -2225,7 +2175,7 @@ ${isRulingActive
                 </div>
 
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Vulnerability Score</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Vulnerability Score</span>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="text-base font-black text-amber-400">{deepDiveData.score}/100</span>
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
@@ -2236,81 +2186,29 @@ ${isRulingActive
                       {deepDiveData.score >= 65 ? 'SEVERE' : 'MODERATE'}
                     </span>
                   </div>
-                  <span className="text-[10px] text-slate-400 mt-1 block">
-                    {deepDiveData.actionableList.length} Recorded Issues
-                  </span>
                 </div>
 
                 <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
-                  <span className="text-[10px] text-slate-500 block uppercase font-bold">Total Ingested</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-bold">Total Ingested</span>
                   <span className="text-base font-black text-slate-100 mt-0.5 block">{deepDiveData.totalIncidents}</span>
                   <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
                     <span className="text-rose-400">⚡ {deepDiveData.antiCount}</span>
                     <span>•</span>
                     <span className="text-emerald-400">🛡️ {deepDiveData.defCount}</span>
-                    <span>•</span>
-                    <span className="text-slate-400">🏛️ {deepDiveData.neutralCount}</span>
                   </div>
                 </div>
               </div>
 
-              {deepDiveData.categoryBreakdown.length > 0 && (
-                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                      <PieChart size={13} className="text-amber-400" />
-                      <span>Dominant Grievance Categories in AC</span>
-                    </span>
-                    <span className="text-[10px] text-slate-500">{deepDiveData.categoryBreakdown.length} Sectors Active</span>
-                  </div>
-
-                  <div className="w-full bg-slate-900 rounded-full h-2.5 flex overflow-hidden border border-slate-800">
-                    {deepDiveData.categoryBreakdown.map((cat, idx) => {
-                      const colors = ['bg-amber-500', 'bg-rose-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-sky-500'];
-                      const color = colors[idx % colors.length];
-                      return (
-                        <div
-                          key={cat.name}
-                          style={{ width: `${cat.percent}%` }}
-                          className={`${color} h-full transition-all`}
-                          title={`${cat.name}: ${cat.percent}%`}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 pt-0.5">
-                    {deepDiveData.categoryBreakdown.map((cat, idx) => {
-                      const dotColors = ['bg-amber-400', 'bg-rose-400', 'bg-indigo-400', 'bg-emerald-400', 'bg-sky-400'];
-                      return (
-                        <div key={cat.name} className="flex items-center gap-1.5 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800 text-[10px] text-slate-300 font-medium">
-                          <span className={`w-2 h-2 rounded-full ${dotColors[idx % dotColors.length]}`}></span>
-                          <span>{cat.name}:</span>
-                          <span className="font-bold text-slate-100">{cat.percent}%</span>
-                          <span className="text-slate-500">({cat.count})</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Flame size={14} className="text-amber-500" />
-                    <span>Constituency Ground Flashpoints & Directives</span>
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {deepDiveData.actionableList.length} Ground Incidents
-                  </span>
-                </div>
-
+                <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Flame size={14} className="text-amber-500" />
+                  <span>Constituency Ground Flashpoints</span>
+                </h4>
                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {deepDiveData.actionableList.map((item, idx) => (
                     <div
                       key={item.id || idx}
-                      className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5 hover:border-slate-700 transition-all"
+                      className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5"
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300">
@@ -2324,27 +2222,98 @@ ${isRulingActive
                       </p>
                     </div>
                   ))}
-
-                  {deepDiveData.actionableList.length === 0 && (
-                    <div className="p-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                      No ground incidents recorded for this constituency.
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
 
             <div className="p-3.5 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">
-                Civic Matrix Analytics • Field Intelligence Unit
-              </span>
+              <span className="text-[11px] text-slate-400">Civic Matrix Analytics</span>
               <button
                 onClick={() => setDeepDiveAC(null)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition-all cursor-pointer"
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs cursor-pointer"
               >
-                Close Dossier
+                Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cadre Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden relative">
+            <div className="p-4 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+              <h3 className="font-bold text-sm text-white">Ground Cadre Incident Dispatch</h3>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitGroundReport} className="p-5 space-y-3.5 text-xs">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">Issue Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={reportForm.title}
+                  onChange={(e) => setReportForm({ ...reportForm, title: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">District *</label>
+                  <select
+                    value={reportForm.district}
+                    onChange={(e) => setReportForm({ ...reportForm, district: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none"
+                  >
+                    {districtList.filter((d) => d !== 'All').map((d) => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1">Constituency</label>
+                  <input
+                    type="text"
+                    value={reportForm.constituency}
+                    onChange={(e) => setReportForm({ ...reportForm, constituency: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">Summary *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={reportForm.summary}
+                  onChange={(e) => setReportForm({ ...reportForm, summary: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-100 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReportModal(false)}
+                  className="flex-1 py-2 rounded-lg bg-slate-800 text-xs font-semibold text-slate-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingReport || reportSuccess}
+                  className="flex-1 py-2 rounded-lg bg-emerald-600 text-xs font-bold text-white shadow flex items-center justify-center gap-1.5"
+                >
+                  {submittingReport ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
+                  <span>{submittingReport ? 'Dispatching...' : 'Dispatch Issue'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2354,35 +2323,29 @@ ${isRulingActive
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl relative">
             <button
-              onClick={() => {
-                setShowLoginModal(false);
-                setLoginError('');
-                setPasscode('');
-              }}
+              onClick={() => setShowLoginModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 cursor-pointer"
             >
               <X size={18} />
             </button>
-
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400">
                 <KeyRound size={22} />
               </div>
               <div>
                 <h3 className="font-bold text-base text-white">War-Room Access Gateway</h3>
-                <p className="text-xs text-slate-400">Restricted to authorized campaign strategists & candidates</p>
+                <p className="text-xs text-slate-400">Authorized campaign access only</p>
               </div>
             </div>
-
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Candidate Party Affiliation (for candidate passcodes)
+                  Candidate Party Affiliation
                 </label>
                 <select
                   value={candidateParty}
                   onChange={(e) => setCandidateParty(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-amber-300 focus:outline-none"
                 >
                   <option value="DMK">DMK</option>
                   <option value="AIADMK">AIADMK</option>
@@ -2393,52 +2356,38 @@ ${isRulingActive
                   <option value="THIRD_FRONT">Third Front / Independent</option>
                 </select>
               </div>
-
               <div>
-                <label className="text-[11px] font-semibold text-slate-300 block mb-1">
-                  Security Passcode
-                </label>
+                <label className="text-[11px] font-semibold text-slate-300 block mb-1">Passcode</label>
                 <input
                   type="password"
-                  placeholder="Enter passcode (e.g. admin2026 or candidate2026)"
+                  placeholder="admin2026 or candidate2026"
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none"
                   autoFocus
                 />
               </div>
-
               {loginError && (
                 <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium">
                   {loginError}
                 </div>
               )}
-
               <div className="flex gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowLoginModal(false);
-                    setLoginError('');
-                    setPasscode('');
-                  }}
-                  className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all cursor-pointer"
+                  onClick={() => setShowLoginModal(false)}
+                  className="flex-1 py-2 rounded-lg bg-slate-800 text-xs font-semibold text-slate-300"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-xs font-bold text-slate-950 transition-all cursor-pointer shadow-md"
+                  className="flex-1 py-2 rounded-lg bg-amber-500 text-xs font-bold text-slate-950"
                 >
-                  Unlock War-Room
+                  Unlock
                 </button>
               </div>
             </form>
-
-            <div className="text-[10px] text-slate-500 border-t border-slate-800 pt-3 flex justify-between">
-              <span>Admin: <code>admin2026</code></span>
-              <span>Candidate: <code>candidate2026</code></span>
-            </div>
           </div>
         </div>
       )}
